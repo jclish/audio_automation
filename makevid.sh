@@ -9,6 +9,7 @@ source "$(dirname "$0")/kenburns.sh"
 AUDIO_FILE="$1"
 SHUFFLE=false
 MEDIA_OVERRIDE=""
+VOLUME_MULTIPLIER=3.0  # default volume multiplier
 
 # Parse optional args
 for ((i=2; i<=$#; i++)); do
@@ -19,6 +20,10 @@ for ((i=2; i<=$#; i++)); do
     --media)
       j=$((i+1))
       MEDIA_OVERRIDE="${!j}"
+      ;;
+    --volume)
+      j=$((i+1))
+      VOLUME_MULTIPLIER="${!j}"
       ;;
   esac
 done
@@ -142,8 +147,8 @@ echo "\U0001F4FC Concatenating clips into $FINAL_VIDEO..."
 ffmpeg -y -f concat -safe 0 -i "$CONCAT_LIST" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "$FINAL_VIDEO"
 
 # === COMBINE WITH AUDIO ===
-echo "\U0001F517 Merging with audio..."
-ffmpeg -y -i "$FINAL_VIDEO" -i "$AUDIO_FILE" -filter:a "volume=1.5" -c:v copy -c:a aac -shortest "$FINAL_OUTPUT"
+echo "\U0001F517 Merging with audio (volume: ${VOLUME_MULTIPLIER}x)..."
+ffmpeg -y -i "$FINAL_VIDEO" -i "$AUDIO_FILE" -filter:a "volume=$VOLUME_MULTIPLIER" -c:v copy -c:a aac -shortest "$FINAL_OUTPUT"
 
 echo "✅ Final video with audio: $FINAL_OUTPUT"
 
