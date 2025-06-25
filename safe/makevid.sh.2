@@ -1,0 +1,78 @@
+#!/bin/bash
+
+set -e
+
+# === CONFIGURATION ===
+AUDIO_FILE="$1"
+TMP_DIR="tmp_work"
+IMG_DIR="Videos"
+CLIP_DURATION=5  # default duration per clip in seconds
+FINAL_VIDEO="video_only.mp4"
+FINAL_OUTPUT="output_with_audio.mp4"
+
+# === PREPARE ===
+echo "🎬 Preparing workspace..."
+rm -rf "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+
+# === AUDIO LENGTH ===
+AUDIO_DURATION=$(ffprobe -i "$AUDIO_FILE" -show_entries format=duration -v quiet -of csv="p=0")
+echo "🔊 Audio duration: ${AUDIO_DURATION%.*} seconds"
+
+# === IMAGE LIST ===
+shopt -s nullglob
+IMAGE_FILES=("$IMG_DIR"/*.{jpg,jpeg,JPG,JPEG})
+shopt -u nullglob
+NUM_IMAGES=${#IMAGE_FILES[@]}
+
+if [ "$NUM_IMAGES" -eq 0 ]; then
+  echo "❌ No .jpg/.jpeg images found in $IMG_DIR."
+  exit 1
+fi
+
+# === CALCULATE CLIP COUNTS ===
+FULL_CLIPS=$(echo "$AUDIO_DURATION / $CLIP_DURATION" | bc)
+PARTIAL_REMAINDER=$(echo "$AUDIO_DURATION - ($FULL_CLIPS * $CLIP_DURATION)" | bc)
+
+TOTAL_CLIPS=$FULL_CLIPS
+if (( $(echo "$PARTIAL_REMAINDER > 0.1" | bc -l) )); then
+  TOTAL_CLIPS=$((FULL_CLIPS + 1))
+fi
+
+echo "🎮 Generating $TOTAL_CLIPS clips at ${CLIP_DURATION}s each (last one trimmed if needed)"
+
+# === GENERATE CLIPS ===
+for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
+  IMG_INDEX=$((i % NUM_IMAGES))
+  IMAGE_FILE="${IMAGE_FILES[$IMG_INDEX]}"
+  OUT_CLIP="$TMP_DIR/clip_${i}.mp4"
+
+  # Determine clip duration
+  if [ "$i" -eq $((TOTAL_CLIPS - 1)) ] && (( $(echo "$PARTIAL_REMAINDER > 0.1" | bc -l) )); then
+    THIS_DURATION="$PARTIAL_REMAINDER"
+  else
+    THIS_DURATION="$CLIP_DURATION"
+  fi
+
+  ffmpeg -y -loop 1 -t "$THIS_DURATION" -i "$IMAGE_FILE" -vf "scale=1280:720,format=yuv420p" \
+    -c:v libx264 -pix_fmt yuv420p "$OUT_CLIP"
+done
+
+# === CONCAT LIST ===
+echo "📜 Building concat list..."
+CONCAT_LIST="$TMP_DIR/concat_list.txt"
+> "$CONCAT_LIST"
+for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
+  echo "file 'clip_${i}.mp4'" >> "$CONCAT_LIST"
+done
+
+# === CONCATENATE CLIPS ===
+echo "📼 Concatenating clips into $FINAL_VIDEO..."
+ffmpeg -y -f concat -safe 0 -i "$CONCAT_LIST" -c copy "$FINAL_VIDEO"
+
+# === COMBINE WITH AUDIO ===
+echo "🔗 Merging with audio..."
+ffmpeg -y -i "$FINAL_VIDEO" -i "$AUDIO_FILE" -c:v copy -c:a aac -shortest "$FINAL_OUTPUT"
+
+echo "✅ Final video with audio: $FINAL_OUTPUT"
+

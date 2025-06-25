@@ -1,0 +1,9 @@
+tmp_work/
+*.mp4
+*.mov
+*.wav
+*.jpg
+*.png
+.DS_Store
+output_with_audio.mp4
+video_only.mp4

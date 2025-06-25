@@ -1,0 +1,133 @@
+#!/bin/bash
+
+set -e
+
+# === CONFIGURATION ===
+VIDEO_DIR="../Downloads/Podcast Materials/Adobe Stock/"  # Where your video clips are
+WORK_DIR="./tmp_work"          # Temp dir for transcoded clips
+OUTPUT_VIDEO="video_only.mp4"  # Intermediate video without audio
+FINAL_OUTPUT="output_with_audio.mp4"  # Final video with audio overlay
+TARGET_WIDTH=1280              # Resize target
+TARGET_HEIGHT=720
+
+# === GET AUDIO FILE FROM ARGUMENTS ===
+AUDIO_FILE="$1"
+if [[ -z "$AUDIO_FILE" || ! -f "$AUDIO_FILE" ]]; then
+  echo "Usage: $0 <audiofile.wav>"
+  exit 1
+fi
+
+mkdir -p "$WORK_DIR"
+
+# === GET AUDIO DURATION IN SECONDS ===
+AUDIO_DURATION=$(ffprobe -v error -show_entries format=duration -of csv="p=0" "$AUDIO_FILE")
+AUDIO_DURATION=${AUDIO_DURATION%.*}
+
+echo "🎷 Audio duration: $AUDIO_DURATION seconds"
+
+# === BUILD VIDEO+IMAGE LIST TO TEMP FILE ===
+VIDEO_META_FILE="$WORK_DIR/video_meta.txt"
+> "$VIDEO_META_FILE"
+
+while IFS= read -r -d '' file; do
+  EXT="${file##*.}"
+  EXT_LOWER="${EXT,,}"
+
+  if [[ "$EXT_LOWER" =~ ^(jpg|jpeg|png|bmp)$ ]]; then
+    # Treat images as 5 seconds
+    printf "5:::%s\n" "$file" >> "$VIDEO_META_FILE"
+  else
+    DURATION=$(ffprobe -v error -show_entries format=duration -of csv="p=0" "$file" || echo 0)
+    DURATION=${DURATION%.*}
+    if [[ "$DURATION" =~ ^[0-9]+$ && "$DURATION" -gt 0 ]]; then
+      printf "%d:::%s\n" "$DURATION" "$file" >> "$VIDEO_META_FILE"
+    fi
+  fi
+
+done < <(find "$VIDEO_DIR" -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.mkv" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.bmp" \) -print0)
+
+# === SHUFFLE FILE SAFELY ===
+SHUFFLED_FILE="$WORK_DIR/shuffled_video_meta.txt"
+gshuf "$VIDEO_META_FILE" > "$SHUFFLED_FILE"
+
+# === PICK CLIPS TO MATCH AUDIO DURATION ===
+TOTAL=0
+SELECTED=()
+
+while IFS= read -r line; do
+  dur="${line%%:::*}"
+  path="${line#*:::}"
+
+  dur="${dur//[[:space:]]/}"
+  path="${path## }"
+
+  if ! [[ "$dur" =~ ^[0-9]+$ ]]; then
+    echo "⚠️ Skipping invalid duration: $dur"
+    continue
+  fi
+
+  TOTAL=$((TOTAL + dur))
+  SELECTED+=("$path")
+  echo "🧮 Added: $dur sec, total so far: $TOTAL sec"
+
+  if (( TOTAL >= AUDIO_DURATION )); then
+    echo "✅ Duration target met"
+    break
+  fi
+
+done < "$SHUFFLED_FILE"
+
+if (( TOTAL < AUDIO_DURATION )); then
+  echo "❌ Not enough total video length."
+  exit 2
+fi
+
+# === TRANSCODE SELECTED CLIPS WITH FADES OR IMAGE STILLS ===
+> "$WORK_DIR/concat_list.txt"
+COUNT=0
+CURRENT_DURATION=0
+
+for input in "${SELECTED[@]}"; do
+  OUT="$WORK_DIR/clip_$COUNT.mp4"
+  EXT="${input##*.}"
+  EXT_LOWER="${EXT,,}"
+
+  if (( COUNT < ${#SELECTED[@]} - 1 )); then
+    REMAINING_TRIM=""
+  else
+    REMAINING_TRIM="-t $((AUDIO_DURATION - CURRENT_DURATION))"
+  fi
+
+  if [[ "$EXT_LOWER" =~ ^(jpg|jpeg|png|bmp)$ ]]; then
+    ffmpeg -y -loop 1 -i "$input" \
+      -vf "scale=${TARGET_WIDTH}:${TARGET_HEIGHT},format=yuv420p" \
+      -t 5 -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k "$OUT"
+  else
+    ffmpeg -y -i "$input" \
+      -vf "scale=${TARGET_WIDTH}:${TARGET_HEIGHT},format=yuv420p,fade=t=in:st=0:d=1,fade=t=out:st=3:d=2" \
+      $REMAINING_TRIM \
+      -c:v libx264 -preset fast -crf 23 \
+      -c:a aac -b:a 128k "$OUT"
+  fi
+
+  echo "file 'clip_$COUNT.mp4'" >> "$WORK_DIR/concat_list.txt"
+  CLIP_DURATION=$(ffprobe -v error -show_entries format=duration -of csv="p=0" "$OUT")
+  CLIP_DURATION=${CLIP_DURATION%.*}
+  CURRENT_DURATION=$((CURRENT_DURATION + CLIP_DURATION))
+  COUNT=$((COUNT + 1))
+done
+
+# === CONCATENATE CLIPS (VIDEO-ONLY) ===
+ffmpeg -y -f concat -safe 0 -i "$WORK_DIR/concat_list.txt" -c copy "$WORK_DIR/$OUTPUT_VIDEO"
+
+# === ADD AUDIO OVERLAY ===
+ffmpeg -y -i "$WORK_DIR/$OUTPUT_VIDEO" -i "$AUDIO_FILE" \
+  -map 0:v -map 1:a \
+  -c:v copy -c:a aac -b:a 192k \
+  -shortest "$FINAL_OUTPUT"
+
+echo "✅ Final video with audio: $FINAL_OUTPUT"
+
+# Optional cleanup
+# rm -r "$WORK_DIR" "$OUTPUT_VIDEO"
+
