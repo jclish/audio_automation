@@ -2,6 +2,9 @@
 
 set -e
 
+# Load Ken Burns module
+source "$(dirname "$0")/kenburns.sh"
+
 # === CONFIGURATION ===
 AUDIO_FILE="$1"
 SHUFFLE=false
@@ -83,17 +86,8 @@ for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
   echo "\U0001F39E️ Clip $i from: $(basename "$MEDIA_FILE") for $THIS_DURATION sec"
 
   if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
-    FRAME_COUNT=$(printf "%.0f" "$(echo "25 * $THIS_DURATION" | bc -l)")
-    if (( i % 2 == 0 )); then
-      PAN_X="iw*(1-zoom)*on/(in-1)"
-    else
-      PAN_X="iw*(1-zoom)*(1 - on/(in-1))"
-    fi
-    KENBURNS="zoompan=z='zoom+0.001':x='$PAN_X':y=0:d=$FRAME_COUNT:s=1280x720,trim=duration=$THIS_DURATION,setpts=PTS-STARTPTS"
-
-    ffmpeg -y -loop 1 -framerate 25 -t "$THIS_DURATION" -i "$MEDIA_FILE" \
-      -vf "$KENBURNS,format=yuv420p" \
-      -c:v libx264 -pix_fmt yuv420p "$OUT_CLIP"
+    # Use the Ken Burns module instead of inline code
+    apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$i"
   else
     ffmpeg -y -ss 0 -t "$THIS_DURATION" -i "$MEDIA_FILE" \
       -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
