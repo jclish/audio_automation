@@ -48,7 +48,40 @@ shopt -u nullglob
 # === SHUFFLE IF REQUESTED ===
 if $SHUFFLE; then
   echo "\U0001F3B2 Shuffling media files..."
-  MEDIA_FILES=( $(printf "%s\n" "${MEDIA_FILES[@]}" | shuf) )
+  
+  # Cross-platform shuffle function
+  shuffle_array() {
+    local array=("$@")
+    local n=${#array[@]}
+    local shuffled=()
+    
+    # Create array of indices
+    local indices=()
+    for i in $(seq 0 $((n-1))); do
+      indices+=($i)
+    done
+    
+    # Fisher-Yates shuffle
+    for ((i=n-1; i>0; i--)); do
+      # Generate random number between 0 and i
+      j=$((RANDOM % (i+1)))
+      
+      # Swap elements
+      temp=${indices[i]}
+      indices[i]=${indices[j]}
+      indices[j]=$temp
+    done
+    
+    # Build shuffled array
+    for i in "${indices[@]}"; do
+      shuffled+=("${array[i]}")
+    done
+    
+    echo "${shuffled[@]}"
+  }
+  
+  # Apply shuffle
+  MEDIA_FILES=($(shuffle_array "${MEDIA_FILES[@]}"))
 fi
 
 NUM_MEDIA=${#MEDIA_FILES[@]}
