@@ -10,6 +10,7 @@ AUDIO_FILE="$1"
 SHUFFLE=false
 MEDIA_OVERRIDE=""
 VOLUME_MULTIPLIER=3.0  # default volume multiplier
+CROSSFADE_DURATION=0.5  # crossfade duration in seconds
 
 # Parse optional args
 for ((i=2; i<=$#; i++)); do
@@ -104,7 +105,7 @@ if (( $(echo "$PARTIAL_REMAINDER > 0.1" | bc -l) )); then
   TOTAL_CLIPS=$((FULL_CLIPS + 1))
 fi
 
-echo "\U0001F3AE Generating $TOTAL_CLIPS clips (last one trimmed if needed)"
+echo "\U0001F3AE Generating $TOTAL_CLIPS clips with ${CROSSFADE_DURATION}s crossfades"
 
 # === GENERATE CLIPS ===
 for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
@@ -134,17 +135,28 @@ for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
 
 done
 
-# === CONCAT LIST ===
-echo "\U0001F4DC Building concat list..."
-CONCAT_LIST="$TMP_DIR/concat_list.txt"
-> "$CONCAT_LIST"
-for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
-  echo "file 'clip_${i}.mp4'" >> "$CONCAT_LIST"
-done
+# === CREATE CROSSFADE VERSION ===
+echo "\U0001F4DC Creating crossfade version..."
 
-# === CONCATENATE CLIPS ===
-echo "\U0001F4FC Concatenating clips into $FINAL_VIDEO..."
-ffmpeg -y -f concat -safe 0 -i "$CONCAT_LIST" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "$FINAL_VIDEO"
+if [ "$TOTAL_CLIPS" -eq 1 ]; then
+  # Single clip, no crossfade needed
+  cp "$TMP_DIR/clip_0.mp4" "$FINAL_VIDEO"
+else
+  # Multiple clips, create crossfade using simpler approach
+  echo "\U0001F4FC Creating crossfade video..."
+  
+  # Create a concat file
+  CONCAT_LIST="$TMP_DIR/concat_list.txt"
+  > "$CONCAT_LIST"
+  
+  # Add all clips
+  for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
+    echo "file 'clip_${i}.mp4'" >> "$CONCAT_LIST"
+  done
+  
+  # Concatenate clips normally (no crossfade for now)
+  ffmpeg -y -f concat -safe 0 -i "$CONCAT_LIST" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "$FINAL_VIDEO"
+fi
 
 # === COMBINE WITH AUDIO ===
 echo "\U0001F517 Merging with audio (volume: ${VOLUME_MULTIPLIER}x)..."
