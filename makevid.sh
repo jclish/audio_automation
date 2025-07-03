@@ -48,49 +48,31 @@ echo "\U0001F50A Audio duration: ${AUDIO_DURATION%.*} seconds"
 shopt -s nullglob
 IMAGE_FILES=("$MEDIA_DIR"/*.{jpg,jpeg,JPG,JPEG})
 VIDEO_FILES=("$MEDIA_DIR"/*.{mp4,mov})
-MEDIA_FILES=("${IMAGE_FILES[@]}" "${VIDEO_FILES[@]}")
+ALL_MEDIA_FILES=("${IMAGE_FILES[@]}" "${VIDEO_FILES[@]}")
 shopt -u nullglob
 
 # === SHUFFLE IF REQUESTED ===
 if $SHUFFLE; then
   echo "\U0001F3B2 Shuffling media files..."
-  
-  # Cross-platform shuffle function
   shuffle_array() {
     local array=("$@")
     local n=${#array[@]}
     local shuffled=()
-    
-    # Create array of indices
     local indices=()
-    for i in $(seq 0 $((n-1))); do
-      indices+=($i)
-    done
-    
-    # Fisher-Yates shuffle
+    for i in $(seq 0 $((n-1))); do indices+=($i); done
     for ((i=n-1; i>0; i--)); do
-      # Generate random number between 0 and i
       j=$((RANDOM % (i+1)))
-      
-      # Swap elements
       temp=${indices[i]}
       indices[i]=${indices[j]}
       indices[j]=$temp
     done
-    
-    # Build shuffled array
-    for i in "${indices[@]}"; do
-      shuffled+=("${array[i]}")
-    done
-    
+    for i in "${indices[@]}"; do shuffled+=("${array[i]}"); done
     echo "${shuffled[@]}"
   }
-  
-  # Apply shuffle
-  MEDIA_FILES=($(shuffle_array "${MEDIA_FILES[@]}"))
+  ALL_MEDIA_FILES=( $(shuffle_array "${ALL_MEDIA_FILES[@]}") )
 fi
 
-NUM_MEDIA=${#MEDIA_FILES[@]}
+NUM_MEDIA=${#ALL_MEDIA_FILES[@]}
 if [ "$NUM_MEDIA" -eq 0 ]; then
   echo "❌ No media files found in $MEDIA_DIR."
   exit 1
@@ -108,9 +90,16 @@ fi
 echo "\U0001F3AE Generating $TOTAL_CLIPS clips with ${CROSSFADE_DURATION}s crossfades"
 
 # === GENERATE CLIPS ===
+WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
 for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
-  MEDIA_INDEX=$((i % NUM_MEDIA))
-  MEDIA_FILE="${MEDIA_FILES[$MEDIA_INDEX]}"
+  if [ ${#WORKING_MEDIA[@]} -eq 0 ]; then
+    WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
+    if $SHUFFLE; then
+      WORKING_MEDIA=( $(shuffle_array "${WORKING_MEDIA[@]}") )
+    fi
+  fi
+  MEDIA_FILE="${WORKING_MEDIA[0]}"
+  WORKING_MEDIA=("${WORKING_MEDIA[@]:1}")
   OUT_CLIP="$TMP_DIR/clip_${i}.mp4"
 
   EXT="${MEDIA_FILE##*.}"
@@ -125,7 +114,6 @@ for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
   echo "\U0001F39E️ Clip $i from: $(basename "$MEDIA_FILE") for $THIS_DURATION sec"
 
   if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
-    # Use the Ken Burns module instead of inline code
     apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$i"
   else
     ffmpeg -y -ss 0 -t "$THIS_DURATION" -i "$MEDIA_FILE" \
