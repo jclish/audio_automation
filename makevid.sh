@@ -11,6 +11,8 @@ SHUFFLE=false
 MEDIA_OVERRIDE=""
 VOLUME_MULTIPLIER=3.0  # default volume multiplier
 CROSSFADE_DURATION=0.5  # crossfade duration in seconds
+CLIP_DURATION=5  # default duration per image clip in seconds
+CLIP_VARIATION=0  # default variation percentage
 
 # Parse optional args
 for ((i=2; i<=$#; i++)); do
@@ -26,14 +28,46 @@ for ((i=2; i<=$#; i++)); do
       j=$((i+1))
       VOLUME_MULTIPLIER="${!j}"
       ;;
+    --len)
+      j=$((i+1))
+      CLIP_DURATION="${!j}"
+      ;;
+    --lenvar)
+      j=$((i+1))
+      CLIP_VARIATION="${!j}"
+      ;;
   esac
 done
 
 TMP_DIR="tmp_work"
 MEDIA_DIR="${MEDIA_OVERRIDE:-Videos}"
-CLIP_DURATION=5  # default duration per image clip in seconds
 FINAL_VIDEO="video_only.mp4"
 FINAL_OUTPUT="output_with_audio.mp4"
+
+# Validate clip duration bounds
+if (( $(echo "$CLIP_DURATION < 2" | bc -l) )); then
+  echo "❌ Error: Clip duration cannot be less than 2 seconds"
+  exit 1
+fi
+if (( $(echo "$CLIP_DURATION > 10" | bc -l) )); then
+  echo "❌ Error: Clip duration cannot be more than 10 seconds"
+  exit 1
+fi
+
+# Calculate variation bounds
+VARIATION_AMOUNT=$(echo "$CLIP_DURATION * $CLIP_VARIATION / 100" | bc -l)
+MIN_DURATION=$(echo "$CLIP_DURATION - $VARIATION_AMOUNT" | bc -l)
+MAX_DURATION=$(echo "$CLIP_DURATION + $VARIATION_AMOUNT" | bc -l)
+
+# Ensure bounds are within limits
+if (( $(echo "$MIN_DURATION < 2" | bc -l) )); then
+  MIN_DURATION=2
+fi
+if (( $(echo "$MAX_DURATION > 10" | bc -l) )); then
+  MAX_DURATION=10
+fi
+
+echo "\U0001F4CF Clip duration: ${CLIP_DURATION}s ± ${CLIP_VARIATION}% (${MIN_DURATION}s - ${MAX_DURATION}s)"
 
 # === PREPARE ===
 echo "\U0001F3AC Preparing workspace..."
@@ -90,19 +124,16 @@ if [ "$NUM_MEDIA" -eq 0 ]; then
 fi
 
 # === CALCULATE CLIP COUNTS ===
-FULL_CLIPS=$(echo "$AUDIO_DURATION / $CLIP_DURATION" | bc)
-PARTIAL_REMAINDER=$(echo "$AUDIO_DURATION - ($FULL_CLIPS * $CLIP_DURATION)" | bc)
-
-TOTAL_CLIPS=$FULL_CLIPS
-if (( $(echo "$PARTIAL_REMAINDER > 0.1" | bc -l) )); then
-  TOTAL_CLIPS=$((FULL_CLIPS + 1))
-fi
-
-echo "\U0001F3AE Generating $TOTAL_CLIPS clips with ${CROSSFADE_DURATION}s crossfades"
+# Estimate total clips needed (will be adjusted based on actual durations)
+ESTIMATED_CLIPS=$(echo "$AUDIO_DURATION / $CLIP_DURATION" | bc)
+echo "\U0001F3AE Estimating $ESTIMATED_CLIPS clips with variable durations"
 
 # === GENERATE CLIPS ===
 WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
-for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
+TOTAL_GENERATED_DURATION=0
+CLIP_COUNT=0
+
+while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   if [ ${#WORKING_MEDIA[@]} -eq 0 ]; then
     WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
     if $SHUFFLE; then
@@ -115,31 +146,49 @@ for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
   # Track usage count
   MEDIA_USAGE_COUNT["$MEDIA_FILE"]=$((MEDIA_USAGE_COUNT["$MEDIA_FILE"] + 1))
   
-  OUT_CLIP="$TMP_DIR/clip_${i}.mp4"
+  OUT_CLIP="$TMP_DIR/clip_${CLIP_COUNT}.mp4"
 
   EXT="${MEDIA_FILE##*.}"
   EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
 
-  if [ "$i" -eq $((TOTAL_CLIPS - 1)) ] && (( $(echo "$PARTIAL_REMAINDER > 0.1" | bc -l) )); then
-    THIS_DURATION="$PARTIAL_REMAINDER"
+  # Calculate variable duration using systematic variation (sine wave)
+  if [ "$CLIP_VARIATION" -gt 0 ]; then
+    # Use sine wave for smooth variation
+    SINE_VALUE=$(echo "s($CLIP_COUNT * 0.5)" | bc -l)
+    VARIATION_FACTOR=$(echo "$SINE_VALUE * $VARIATION_AMOUNT" | bc -l)
+    THIS_DURATION=$(echo "$CLIP_DURATION + $VARIATION_FACTOR" | bc -l)
+    
+    # Ensure within bounds
+    if (( $(echo "$THIS_DURATION < $MIN_DURATION" | bc -l) )); then
+      THIS_DURATION="$MIN_DURATION"
+    fi
+    if (( $(echo "$THIS_DURATION > $MAX_DURATION" | bc -l) )); then
+      THIS_DURATION="$MAX_DURATION"
+    fi
   else
     THIS_DURATION="$CLIP_DURATION"
   fi
 
-  echo "\U0001F39E️ Clip $i from: $(basename "$MEDIA_FILE") for $THIS_DURATION sec"
+  # Check if this would exceed audio duration
+  REMAINING_AUDIO=$(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)
+  if (( $(echo "$THIS_DURATION > $REMAINING_AUDIO" | bc -l) )); then
+    THIS_DURATION="$REMAINING_AUDIO"
+  fi
+
+  echo "\U0001F39E️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
 
   if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
-    apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$i"
+    apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$CLIP_COUNT"
   else
     # For videos, calculate different start time based on usage count
     if [[ "$MEDIA_FILE" =~ \.(mp4|mov)$ ]]; then
       total_duration=${MEDIA_DURATION["$MEDIA_FILE"]}
       usage_count=${MEDIA_USAGE_COUNT["$MEDIA_FILE"]}
       
-      if [ -n "$total_duration" ] && (( $(echo "$total_duration > 5" | bc -l) )); then
-        total_segments=$(echo "$total_duration / 5" | bc)
+      if [ -n "$total_duration" ] && (( $(echo "$total_duration > $THIS_DURATION" | bc -l) )); then
+        total_segments=$(echo "$total_duration / $THIS_DURATION" | bc)
         segment_index=$(((usage_count - 1) % total_segments))
-        start_time=$(echo "$segment_index * 5" | bc)
+        start_time=$(echo "$segment_index * $THIS_DURATION" | bc)
         
         # Ensure we don't exceed video duration
         max_start=$(echo "$total_duration - $THIS_DURATION" | bc -l)
@@ -160,7 +209,12 @@ for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
       -an -c:v libx264 -preset fast -crf 23 "$OUT_CLIP"
   fi
 
+  TOTAL_GENERATED_DURATION=$(echo "$TOTAL_GENERATED_DURATION + $THIS_DURATION" | bc -l)
+  CLIP_COUNT=$((CLIP_COUNT + 1))
 done
+
+TOTAL_CLIPS=$CLIP_COUNT
+echo "\U0001F4DC Generated $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"
 
 # === CREATE CROSSFADE VERSION ===
 echo "\U0001F4DC Creating crossfade version..."
