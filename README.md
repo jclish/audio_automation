@@ -7,7 +7,8 @@ This project contains a Bash script that takes a WAV audio file and a directory 
 - Converts images (JPEG) into video clips with a zoom/pan effect
 - Includes `.mov` and `.mp4` video files seamlessly
 - Dynamically matches video duration to audio length
-- Optional media shuffling
+- Optional media shuffling (no media file is reused until all have been used once; shuffling applies to each round)
+- When video files are reused, different segments are extracted to maximize variety
 - Adjustable audio volume boost
 - Compatible with macOS
 - Modular Ken Burns effect system

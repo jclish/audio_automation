@@ -51,6 +51,17 @@ VIDEO_FILES=("$MEDIA_DIR"/*.{mp4,mov})
 ALL_MEDIA_FILES=("${IMAGE_FILES[@]}" "${VIDEO_FILES[@]}")
 shopt -u nullglob
 
+# Initialize tracking arrays
+declare -A MEDIA_USAGE_COUNT
+declare -A MEDIA_DURATION
+
+# Get video durations
+for media_file in "${ALL_MEDIA_FILES[@]}"; do
+  if [[ "$media_file" =~ \.(mp4|mov)$ ]]; then
+    MEDIA_DURATION["$media_file"]=$(ffprobe -i "$media_file" -show_entries format=duration -v quiet -of csv="p=0")
+  fi
+done
+
 # === SHUFFLE IF REQUESTED ===
 if $SHUFFLE; then
   echo "\U0001F3B2 Shuffling media files..."
@@ -100,6 +111,10 @@ for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
   fi
   MEDIA_FILE="${WORKING_MEDIA[0]}"
   WORKING_MEDIA=("${WORKING_MEDIA[@]:1}")
+  
+  # Track usage count
+  MEDIA_USAGE_COUNT["$MEDIA_FILE"]=$((MEDIA_USAGE_COUNT["$MEDIA_FILE"] + 1))
+  
   OUT_CLIP="$TMP_DIR/clip_${i}.mp4"
 
   EXT="${MEDIA_FILE##*.}"
@@ -116,7 +131,31 @@ for i in $(seq 0 $((TOTAL_CLIPS - 1))); do
   if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
     apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$i"
   else
-    ffmpeg -y -ss 0 -t "$THIS_DURATION" -i "$MEDIA_FILE" \
+    # For videos, calculate different start time based on usage count
+    if [[ "$MEDIA_FILE" =~ \.(mp4|mov)$ ]]; then
+      total_duration=${MEDIA_DURATION["$MEDIA_FILE"]}
+      usage_count=${MEDIA_USAGE_COUNT["$MEDIA_FILE"]}
+      
+      if [ -n "$total_duration" ] && (( $(echo "$total_duration > 5" | bc -l) )); then
+        total_segments=$(echo "$total_duration / 5" | bc)
+        segment_index=$(((usage_count - 1) % total_segments))
+        start_time=$(echo "$segment_index * 5" | bc)
+        
+        # Ensure we don't exceed video duration
+        max_start=$(echo "$total_duration - $THIS_DURATION" | bc -l)
+        if (( $(echo "$start_time > $max_start" | bc -l) )); then
+          start_time=0
+        fi
+        
+        echo "   Using segment $((segment_index + 1))/$total_segments (start: ${start_time}s)"
+      else
+        start_time=0
+      fi
+    else
+      start_time=0
+    fi
+    
+    ffmpeg -y -ss "$start_time" -t "$THIS_DURATION" -i "$MEDIA_FILE" \
       -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
       -an -c:v libx264 -preset fast -crf 23 "$OUT_CLIP"
   fi
