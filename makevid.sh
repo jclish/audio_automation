@@ -216,6 +216,13 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   REMAINING_AUDIO=$(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)
   if (( $(echo "$THIS_DURATION > $REMAINING_AUDIO" | bc -l) )); then
     THIS_DURATION="$REMAINING_AUDIO"
+    echo "   Final clip adjusted to ${THIS_DURATION}s to match audio duration"
+  fi
+
+  # Ensure minimum duration for final clip
+  if (( $(echo "$THIS_DURATION < 0.1" | bc -l) )); then
+    echo "   Skipping clip - remaining duration too small"
+    break
   fi
 
   echo "\U0001F39E️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
@@ -258,6 +265,8 @@ done
 
 TOTAL_CLIPS=$CLIP_COUNT
 echo "\U0001F4DC Generated $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"
+echo "\U0001F4CF Target audio duration: ${AUDIO_DURATION}s"
+echo "\U0001F4CF Duration difference: $(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)s"
 
 # === CREATE CROSSFADE VERSION ===
 echo "\U0001F4DC Creating crossfade version..."
