@@ -78,16 +78,16 @@ if (( $(echo "$MAX_DURATION > 10" | bc -l) )); then
   MAX_DURATION=10
 fi
 
-echo "\U0001F4CF Clip duration: ${CLIP_DURATION}s ± ${CLIP_VARIATION}% (${MIN_DURATION}s - ${MAX_DURATION}s)"
+echo "🎞️ Clip duration: ${CLIP_DURATION}s ± ${CLIP_VARIATION}% (${MIN_DURATION}s - ${MAX_DURATION}s)"
 
 # === PREPARE ===
-echo "\U0001F3AC Preparing workspace..."
+echo "🎬 Preparing workspace..."
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
 # === AUDIO LENGTH ===
 AUDIO_DURATION=$(ffprobe -i "$AUDIO_FILE" -show_entries format=duration -v quiet -of csv="p=0")
-echo "\U0001F50A Audio duration: ${AUDIO_DURATION%.*} seconds"
+echo "🔊 Audio duration: ${AUDIO_DURATION%.*} seconds"
 
 # === MEDIA LIST ===
 shopt -s nullglob
@@ -151,7 +151,7 @@ get_duration() {
 
 # === SHUFFLE IF REQUESTED ===
 if $SHUFFLE; then
-  echo "\U0001F3B2 Shuffling media files..."
+  echo "🎲 Shuffling media files..."
   shuffle_array() {
     local array=("$@")
     local n=${#array[@]}
@@ -179,7 +179,7 @@ fi
 # === CALCULATE CLIP COUNTS ===
 # Estimate total clips needed (will be adjusted based on actual durations)
 ESTIMATED_CLIPS=$(echo "$AUDIO_DURATION / $CLIP_DURATION" | bc)
-echo "\U0001F3AE Estimating $ESTIMATED_CLIPS clips with variable durations"
+echo "🎬 Estimating $ESTIMATED_CLIPS clips with variable durations"
 
 # === GENERATE CLIPS ===
 WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
@@ -242,7 +242,7 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
     echo "   Final clip duration adjusted to ${THIS_DURATION}s to exactly match audio"
   fi
 
-  echo "\U0001F39E️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
+  echo "🎞️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
 
   if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
     if $VERBOSE; then
@@ -305,14 +305,14 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
 done
 
 TOTAL_CLIPS=$CLIP_COUNT
-echo "\U0001F4DC Generated $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"
-echo "\U0001F4CF Target audio duration: ${AUDIO_DURATION}s"
-echo "\U0001F4CF Duration difference: $(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)s"
+echo "📊 Generated $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"
+echo "📊 Target audio duration: ${AUDIO_DURATION}s"
+echo "📊 Duration difference: $(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)s"
 
 # Final verification and adjustment if needed
 DURATION_DIFF=$(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)
 if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
-  echo "\U0001F4CF Adjusting final clip to match audio duration exactly..."
+  echo "📊 Adjusting final clip to match audio duration exactly..."
   # Regenerate the last clip with the correct duration
   LAST_CLIP_INDEX=$((TOTAL_CLIPS - 1))
   LAST_CLIP_FILE="$TMP_DIR/clip_${LAST_CLIP_INDEX}.mp4"
@@ -383,18 +383,18 @@ if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
   fi
   
   TOTAL_GENERATED_DURATION="$AUDIO_DURATION"
-  echo "\U0001F4CF Final duration adjusted to: ${TOTAL_GENERATED_DURATION}s"
+  echo "📊 Final duration adjusted to: ${TOTAL_GENERATED_DURATION}s"
 fi
 
 # === CREATE CROSSFADE VERSION ===
-echo "\U0001F4DC Creating crossfade version..."
+echo "📋 Creating crossfade version..."
 
 if [ "$TOTAL_CLIPS" -eq 1 ]; then
   # Single clip, no crossfade needed
   cp "$TMP_DIR/clip_0.mp4" "$FINAL_VIDEO"
 else
   # Multiple clips, create crossfade using simpler approach
-  echo "\U0001F4FC Creating crossfade video..."
+  echo "🎬 Creating crossfade video..."
   
   # Create a concat file
   CONCAT_LIST="$TMP_DIR/concat_list.txt"
@@ -420,7 +420,7 @@ else
 fi
 
 # === COMBINE WITH AUDIO ===
-echo "\U0001F517 Merging with audio (volume: ${VOLUME_MULTIPLIER}x)..."
+echo "🔗 Merging with audio (volume: ${VOLUME_MULTIPLIER}x)..."
 if $VERBOSE; then
   ffmpeg -y -i "$FINAL_VIDEO" -i "$AUDIO_FILE" -filter:a "volume=$VOLUME_MULTIPLIER" -c:v copy -c:a aac -shortest "$FINAL_OUTPUT"
 else
