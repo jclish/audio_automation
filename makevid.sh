@@ -236,6 +236,12 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
     break
   fi
 
+  # Ensure we don't exceed audio duration by more than 0.1 seconds
+  if (( $(echo "$TOTAL_GENERATED_DURATION + $THIS_DURATION > $AUDIO_DURATION + 0.1" | bc -l) )); then
+    THIS_DURATION=$(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)
+    echo "   Final clip duration adjusted to ${THIS_DURATION}s to exactly match audio"
+  fi
+
   echo "\U0001F39E️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
 
   if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
@@ -302,6 +308,83 @@ TOTAL_CLIPS=$CLIP_COUNT
 echo "\U0001F4DC Generated $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"
 echo "\U0001F4CF Target audio duration: ${AUDIO_DURATION}s"
 echo "\U0001F4CF Duration difference: $(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)s"
+
+# Final verification and adjustment if needed
+DURATION_DIFF=$(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)
+if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
+  echo "\U0001F4CF Adjusting final clip to match audio duration exactly..."
+  # Regenerate the last clip with the correct duration
+  LAST_CLIP_INDEX=$((TOTAL_CLIPS - 1))
+  LAST_CLIP_FILE="$TMP_DIR/clip_${LAST_CLIP_INDEX}.mp4"
+  
+  # Get the media file used for the last clip
+  LAST_MEDIA_FILE=""
+  for i in "${!MEDIA_USAGE_COUNT_KEYS[@]}"; do
+    if [[ "${MEDIA_USAGE_COUNT_KEYS[$i]}" == "$MEDIA_FILE" ]]; then
+      LAST_MEDIA_FILE="$MEDIA_FILE"
+      break
+    fi
+  done
+  
+  if [ -n "$LAST_MEDIA_FILE" ]; then
+    EXT="${LAST_MEDIA_FILE##*.}"
+    EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+    
+    if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
+      if $VERBOSE; then
+        apply_kenburns "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$LAST_CLIP_INDEX"
+      else
+        echo -n "Adjusting final clip ["
+        for ((p=0; p<20; p++)); do
+          echo -n "█"
+        done
+        echo -n "] "
+        apply_kenburns "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$LAST_CLIP_INDEX" >/dev/null 2>&1
+        echo "Done!"
+      fi
+    else
+      # For videos, recalculate start time
+      if [[ "$LAST_MEDIA_FILE" =~ \.(mp4|mov)$ ]]; then
+        total_duration=$(get_duration "$LAST_MEDIA_FILE")
+        usage_count=$(get_usage_count "$LAST_MEDIA_FILE")
+        
+        if [ -n "$total_duration" ] && (( $(echo "$total_duration > $DURATION_DIFF" | bc -l) )); then
+          total_segments=$(echo "$total_duration / $DURATION_DIFF" | bc)
+          segment_index=$(((usage_count - 1) % total_segments))
+          start_time=$(echo "$segment_index * $DURATION_DIFF" | bc)
+          
+          max_start=$(echo "$total_duration - $DURATION_DIFF" | bc -l)
+          if (( $(echo "$start_time > $max_start" | bc -l) )); then
+            start_time=0
+          fi
+        else
+          start_time=0
+        fi
+      else
+        start_time=0
+      fi
+      
+      if $VERBOSE; then
+        ffmpeg -y -ss "$start_time" -t "$DURATION_DIFF" -i "$LAST_MEDIA_FILE" \
+          -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+          -an -c:v libx264 -preset fast -crf 23 "$LAST_CLIP_FILE"
+      else
+        echo -n "Adjusting final clip ["
+        for ((p=0; p<20; p++)); do
+          echo -n "█"
+        done
+        echo -n "] "
+        ffmpeg -y -ss "$start_time" -t "$DURATION_DIFF" -i "$LAST_MEDIA_FILE" \
+          -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+          -an -c:v libx264 -preset fast -crf 23 -loglevel "$FFMPEG_LOGLEVEL" "$LAST_CLIP_FILE" >/dev/null 2>&1
+        echo "Done!"
+      fi
+    fi
+  fi
+  
+  TOTAL_GENERATED_DURATION="$AUDIO_DURATION"
+  echo "\U0001F4CF Final duration adjusted to: ${TOTAL_GENERATED_DURATION}s"
+fi
 
 # === CREATE CROSSFADE VERSION ===
 echo "\U0001F4DC Creating crossfade version..."
