@@ -13,6 +13,7 @@ VOLUME_MULTIPLIER=3.0  # default volume multiplier
 CROSSFADE_DURATION=0.5  # crossfade duration in seconds
 CLIP_DURATION=5  # default duration per image clip in seconds
 CLIP_VARIATION=0  # default variation percentage
+VERBOSE=false  # default to clean output
 
 # Parse optional args
 for ((i=2; i<=$#; i++)); do
@@ -36,8 +37,18 @@ for ((i=2; i<=$#; i++)); do
       j=$((i+1))
       CLIP_VARIATION="${!j}"
       ;;
+    --verbose)
+      VERBOSE=true
+      ;;
   esac
 done
+
+# Set ffmpeg log level based on verbose flag
+if $VERBOSE; then
+  FFMPEG_LOGLEVEL="info"
+else
+  FFMPEG_LOGLEVEL="error"
+fi
 
 TMP_DIR="tmp_work"
 MEDIA_DIR="${MEDIA_OVERRIDE:-Videos}"
@@ -228,7 +239,18 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   echo "\U0001F39E️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
 
   if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
-    apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$CLIP_COUNT"
+    if $VERBOSE; then
+      apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$CLIP_COUNT"
+    else
+      echo -n "Working on clip $((CLIP_COUNT + 1))/$TOTAL_CLIPS ["
+      # Simple progress bar
+      for ((p=0; p<20; p++)); do
+        echo -n "█"
+      done
+      echo -n "] "
+      apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$CLIP_COUNT" >/dev/null 2>&1
+      echo "Done!"
+    fi
   else
     # For videos, calculate different start time based on usage count
     if [[ "$MEDIA_FILE" =~ \.(mp4|mov)$ ]]; then
@@ -254,9 +276,22 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
       start_time=0
     fi
     
-    ffmpeg -y -ss "$start_time" -t "$THIS_DURATION" -i "$MEDIA_FILE" \
-      -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
-      -an -c:v libx264 -preset fast -crf 23 "$OUT_CLIP"
+    if $VERBOSE; then
+      ffmpeg -y -ss "$start_time" -t "$THIS_DURATION" -i "$MEDIA_FILE" \
+        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        -an -c:v libx264 -preset fast -crf 23 "$OUT_CLIP"
+    else
+      echo -n "Working on clip $((CLIP_COUNT + 1))/$TOTAL_CLIPS ["
+      # Simple progress bar
+      for ((p=0; p<20; p++)); do
+        echo -n "█"
+      done
+      echo -n "] "
+      ffmpeg -y -ss "$start_time" -t "$THIS_DURATION" -i "$MEDIA_FILE" \
+        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        -an -c:v libx264 -preset fast -crf 23 -loglevel "$FFMPEG_LOGLEVEL" "$OUT_CLIP" >/dev/null 2>&1
+      echo "Done!"
+    fi
   fi
 
   TOTAL_GENERATED_DURATION=$(echo "$TOTAL_GENERATED_DURATION + $THIS_DURATION" | bc -l)
@@ -288,12 +323,32 @@ else
   done
   
   # Concatenate clips normally (no crossfade for now)
-  ffmpeg -y -f concat -safe 0 -i "$CONCAT_LIST" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "$FINAL_VIDEO"
+  if $VERBOSE; then
+    ffmpeg -y -f concat -safe 0 -i "$CONCAT_LIST" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "$FINAL_VIDEO"
+  else
+    echo -n "Concatenating clips ["
+    for ((p=0; p<20; p++)); do
+      echo -n "█"
+    done
+    echo -n "] "
+    ffmpeg -y -f concat -safe 0 -i "$CONCAT_LIST" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -loglevel "$FFMPEG_LOGLEVEL" "$FINAL_VIDEO" >/dev/null 2>&1
+    echo "Done!"
+  fi
 fi
 
 # === COMBINE WITH AUDIO ===
 echo "\U0001F517 Merging with audio (volume: ${VOLUME_MULTIPLIER}x)..."
-ffmpeg -y -i "$FINAL_VIDEO" -i "$AUDIO_FILE" -filter:a "volume=$VOLUME_MULTIPLIER" -c:v copy -c:a aac -shortest "$FINAL_OUTPUT"
+if $VERBOSE; then
+  ffmpeg -y -i "$FINAL_VIDEO" -i "$AUDIO_FILE" -filter:a "volume=$VOLUME_MULTIPLIER" -c:v copy -c:a aac -shortest "$FINAL_OUTPUT"
+else
+  echo -n "Merging audio ["
+  for ((p=0; p<20; p++)); do
+    echo -n "█"
+  done
+  echo -n "] "
+  ffmpeg -y -i "$FINAL_VIDEO" -i "$AUDIO_FILE" -filter:a "volume=$VOLUME_MULTIPLIER" -c:v copy -c:a aac -shortest -loglevel "$FFMPEG_LOGLEVEL" "$FINAL_OUTPUT" >/dev/null 2>&1
+  echo "Done!"
+fi
 
 echo "✅ Final video with audio: $FINAL_OUTPUT"
 

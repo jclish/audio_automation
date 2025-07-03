@@ -10,6 +10,7 @@ This project contains a Bash script that takes a WAV audio file and a directory 
 - Optional media shuffling (no media file is reused until all have been used once; shuffling applies to each round)
 - When video files are reused, different segments are extracted to maximize variety
 - Variable clip durations with systematic variation for natural transitions
+- Clean output with progress bars (verbose mode available for debugging)
 - Adjustable audio volume boost
 - Compatible with macOS
 - Modular Ken Burns effect system
@@ -22,7 +23,7 @@ This project contains a Bash script that takes a WAV audio file and a directory 
 ## Usage
 
 ```bash
-bash makevid.sh [audio_file.wav] [--shuffle] [--volume 3.0] [--media media_dir] [--len 5] [--lenvar 10]
+bash makevid.sh [audio_file.wav] [--shuffle] [--volume 3.0] [--media media_dir] [--len 5] [--lenvar 10] [--verbose]
 ```
 
 ### Arguments
@@ -33,12 +34,16 @@ bash makevid.sh [audio_file.wav] [--shuffle] [--volume 3.0] [--media media_dir] 
 - `--media media_dir` — (Optional) Path to directory containing `.jpg`, `.jpeg`, `.mp4`, `.mov` files
 - `--len 5` — (Optional) Base clip duration in seconds (default: 5, range: 2-10)
 - `--lenvar 10` — (Optional) Clip duration variation percentage (default: 0, range: 0-100)
+- `--verbose` — (Optional) Show detailed ffmpeg output for debugging
 
 ### Examples
 
 ```bash
-# Basic usage with default settings
+# Basic usage with default settings (clean output)
 bash makevid.sh theme.wav
+
+# With verbose output for debugging
+bash makevid.sh theme.wav --verbose
 
 # With shuffled media and custom volume
 bash makevid.sh theme.wav --shuffle --volume 2.5
@@ -50,7 +55,7 @@ bash makevid.sh theme.wav --len 5 --lenvar 15
 bash makevid.sh theme.wav --media "/Users/jclish/Downloads/Podcast Materials/Adobe Stock" --len 6 --lenvar 10
 
 # Full example with all options
-bash makevid.sh theme.wav --shuffle --volume 4.0 --media "/path/to/media" --len 4 --lenvar 20
+bash makevid.sh theme.wav --shuffle --volume 4.0 --media "/path/to/media" --len 4 --lenvar 20 --verbose
 ```
 
 ## Output
