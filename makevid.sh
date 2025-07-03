@@ -85,16 +85,58 @@ VIDEO_FILES=("$MEDIA_DIR"/*.{mp4,mov})
 ALL_MEDIA_FILES=("${IMAGE_FILES[@]}" "${VIDEO_FILES[@]}")
 shopt -u nullglob
 
-# Initialize tracking arrays
-declare -A MEDIA_USAGE_COUNT
-declare -A MEDIA_DURATION
+# Initialize tracking arrays (compatible with older bash versions)
+MEDIA_USAGE_COUNT_KEYS=()
+MEDIA_USAGE_COUNT_VALUES=()
+MEDIA_DURATION_KEYS=()
+MEDIA_DURATION_VALUES=()
 
 # Get video durations
 for media_file in "${ALL_MEDIA_FILES[@]}"; do
   if [[ "$media_file" =~ \.(mp4|mov)$ ]]; then
-    MEDIA_DURATION["$media_file"]=$(ffprobe -i "$media_file" -show_entries format=duration -v quiet -of csv="p=0")
+    duration=$(ffprobe -i "$media_file" -show_entries format=duration -v quiet -of csv="p=0")
+    MEDIA_DURATION_KEYS+=("$media_file")
+    MEDIA_DURATION_VALUES+=("$duration")
   fi
 done
+
+# Helper function to get usage count
+get_usage_count() {
+  local media_file="$1"
+  for i in "${!MEDIA_USAGE_COUNT_KEYS[@]}"; do
+    if [[ "${MEDIA_USAGE_COUNT_KEYS[$i]}" == "$media_file" ]]; then
+      echo "${MEDIA_USAGE_COUNT_VALUES[$i]}"
+      return 0
+    fi
+  done
+  echo "0"
+}
+
+# Helper function to set usage count
+set_usage_count() {
+  local media_file="$1"
+  local count="$2"
+  for i in "${!MEDIA_USAGE_COUNT_KEYS[@]}"; do
+    if [[ "${MEDIA_USAGE_COUNT_KEYS[$i]}" == "$media_file" ]]; then
+      MEDIA_USAGE_COUNT_VALUES[$i]="$count"
+      return 0
+    fi
+  done
+  MEDIA_USAGE_COUNT_KEYS+=("$media_file")
+  MEDIA_USAGE_COUNT_VALUES+=("$count")
+}
+
+# Helper function to get duration
+get_duration() {
+  local media_file="$1"
+  for i in "${!MEDIA_DURATION_KEYS[@]}"; do
+    if [[ "${MEDIA_DURATION_KEYS[$i]}" == "$media_file" ]]; then
+      echo "${MEDIA_DURATION_VALUES[$i]}"
+      return 0
+    fi
+  done
+  echo ""
+}
 
 # === SHUFFLE IF REQUESTED ===
 if $SHUFFLE; then
@@ -144,7 +186,8 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   WORKING_MEDIA=("${WORKING_MEDIA[@]:1}")
   
   # Track usage count
-  MEDIA_USAGE_COUNT["$MEDIA_FILE"]=$((MEDIA_USAGE_COUNT["$MEDIA_FILE"] + 1))
+  usage_count=$(get_usage_count "$MEDIA_FILE")
+  set_usage_count "$MEDIA_FILE" $((usage_count + 1))
   
   OUT_CLIP="$TMP_DIR/clip_${CLIP_COUNT}.mp4"
 
@@ -182,8 +225,8 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   else
     # For videos, calculate different start time based on usage count
     if [[ "$MEDIA_FILE" =~ \.(mp4|mov)$ ]]; then
-      total_duration=${MEDIA_DURATION["$MEDIA_FILE"]}
-      usage_count=${MEDIA_USAGE_COUNT["$MEDIA_FILE"]}
+      total_duration=$(get_duration "$MEDIA_FILE")
+      usage_count=$(get_usage_count "$MEDIA_FILE")
       
       if [ -n "$total_duration" ] && (( $(echo "$total_duration > $THIS_DURATION" | bc -l) )); then
         total_segments=$(echo "$total_duration / $THIS_DURATION" | bc)
