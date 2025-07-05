@@ -42,15 +42,15 @@ apply_kenburns() {
     local pan_x
     if (( clip_index % 2 == 0 )); then
         # Left to right pan - start from left edge immediately
-        pan_x="iw*(1-1.1)*(on+1)/in"
+        pan_x="iw*(1-zoom)*on/(in-1)"
     else
         # Right to left pan - start from right edge immediately
-        pan_x="iw*(1-1.1)*(1 - (on+1)/in)"
+        pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
     # Build Ken Burns filter with immediate movement
-    # Use zoompan with (on+1)/in for immediate movement
-    local kenburns_filter="zoompan=z='1.0+0.1*(on+1)/in':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Use original expressions with first frame skipped for immediate movement
+    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},select='not(eq(n\\,0))',trim=duration=$duration,setpts=PTS-STARTPTS"
     
     echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Pan direction: $([ $((clip_index % 2)) -eq 0 ] && echo "left→right" || echo "right→left")"
@@ -181,17 +181,17 @@ apply_kenburns_with_pan() {
     local pan_x
     if [[ "$pan_direction" == "left" ]]; then
         # Left to right pan - start from left edge immediately
-        pan_x="iw*(1-$zoom_end)*(on+1)/in"
+        pan_x="iw*(1-zoom)*on/(in-1)"
     else
         # Right to left pan - start from right edge immediately  
-        pan_x="iw*(1-$zoom_end)*(1 - (on+1)/in)"
+        pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
     # Build Ken Burns filter with immediate movement
-    # Use zoompan with (on+1)/in for immediate movement
-    local kenburns_filter="zoompan=z=$zoom_end:x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Use original expressions with first frame skipped for immediate movement
+    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},select='not(eq(n\\,0))',trim=duration=$duration,setpts=PTS-STARTPTS"
     
-    echo "�� Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
+    echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: ${pan_direction}→$([ "$pan_direction" == "left" ] && echo "right" || echo "left")"
     
     # Apply the effect using ffmpeg
@@ -232,12 +232,12 @@ get_kenburns_filter() {
     
     local pan_x
     if (( clip_index % 2 == 0 )); then
-        pan_x="iw*(1-$zoom_end)*(on+1)/in"
+        pan_x="iw*(1-zoom)*on/(in-1)"
     else
-        pan_x="iw*(1-$zoom_end)*(1 - (on+1)/in)"
+        pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    echo "zoompan=z=$zoom_end:x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    echo "zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},select='not(eq(n\\,0))',trim=duration=$duration,setpts=PTS-STARTPTS"
 }
 
 # Export functions for use in other scripts
