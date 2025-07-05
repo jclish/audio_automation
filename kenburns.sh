@@ -100,8 +100,10 @@ apply_kenburns_custom() {
     # Calculate frame count
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
     
-    # Calculate zoom increment
-    local zoom_increment=$(echo "($zoom_end - $zoom_start) / $frame_count" | bc -l)
+    # Calculate zoom increment with immediate movement
+    # Adjust zoom start slightly to ensure immediate pan movement
+    local effective_zoom_start=$(echo "$zoom_start * 0.98" | bc -l)
+    local zoom_increment=$(echo "($zoom_end - $effective_zoom_start) / $frame_count" | bc -l)
     
     # Determine pan direction based on clip index
     local pan_x
@@ -113,8 +115,8 @@ apply_kenburns_custom() {
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    # Build Ken Burns filter with custom zoom
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Build Ken Burns filter with custom zoom and immediate movement
+    local kenburns_filter="zoompan=z='$effective_zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
     echo "🎬 Applying custom Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: $([ $((clip_index % 2)) -eq 0 ] && echo "left→right" || echo "right→left")"
@@ -170,21 +172,24 @@ apply_kenburns_with_pan() {
     # Calculate frame count
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
     
-    # Calculate zoom increment
-    local zoom_increment=$(echo "($zoom_end - $zoom_start) / $frame_count" | bc -l)
+    # Calculate zoom increment with immediate movement
+    # Adjust zoom start slightly to ensure immediate pan movement
+    local effective_zoom_start=$(echo "$zoom_start * 0.98" | bc -l)
+    local zoom_increment=$(echo "($zoom_end - $effective_zoom_start) / $frame_count" | bc -l)
     
-    # Determine pan direction
+    # Determine pan direction with immediate movement
     local pan_x
     if [[ "$pan_direction" == "left" ]]; then
-        # Left to right pan
+        # Left to right pan - start from left edge immediately
         pan_x="iw*(1-zoom)*on/(in-1)"
     else
-        # Right to left pan
+        # Right to left pan - start from right edge immediately  
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    # Build Ken Burns filter with custom zoom and pan
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Build Ken Burns filter with immediate movement
+    # Use effective_zoom_start to ensure movement starts immediately
+    local kenburns_filter="zoompan=z='$effective_zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
     echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: ${pan_direction}→$([ "$pan_direction" == "left" ] && echo "right" || echo "left")"
@@ -224,6 +229,10 @@ get_kenburns_filter() {
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
     local zoom_increment=$(echo "($zoom_end - $zoom_start) / $frame_count" | bc -l)
     
+    # Calculate effective zoom start for immediate movement
+    local effective_zoom_start=$(echo "$zoom_start * 0.98" | bc -l)
+    local zoom_increment=$(echo "($zoom_end - $effective_zoom_start) / $frame_count" | bc -l)
+    
     local pan_x
     if (( clip_index % 2 == 0 )); then
         pan_x="iw*(1-zoom)*on/(in-1)"
@@ -231,7 +240,7 @@ get_kenburns_filter() {
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    echo "zoompan=z='$zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    echo "zoompan=z='$effective_zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
 }
 
 # Export functions for use in other scripts
