@@ -20,6 +20,60 @@ This project contains a Bash script that takes a WAV audio file and a directory 
 - `ffmpeg` and `ffprobe` installed (`brew install ffmpeg` on macOS)
 - `bc` for floating-point calculations (usually pre-installed)
 
+## Installation
+
+### Quick Setup (Recommended)
+
+Run the installation script to automatically set up dependencies:
+
+```bash
+./install.sh
+```
+
+This script will:
+- Detect your operating system
+- Install ffmpeg and ffprobe using your system's package manager
+- Install bc if needed
+- Test the installation
+
+### Manual Installation
+
+#### macOS
+```bash
+# Using Homebrew (recommended)
+brew install ffmpeg
+
+# Or download from https://ffmpeg.org/download.html
+```
+
+#### Linux
+```bash
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install ffmpeg
+
+# CentOS/RHEL/Fedora
+sudo yum install ffmpeg
+# or
+sudo dnf install ffmpeg
+
+# Arch Linux
+sudo pacman -S ffmpeg
+```
+
+#### Windows
+1. Download from https://ffmpeg.org/download.html
+2. Extract to `C:\ffmpeg`
+3. Add `C:\ffmpeg\bin` to your PATH environment variable
+
+Alternatively, use package managers:
+```bash
+# Chocolatey
+choco install ffmpeg
+
+# Scoop
+scoop install ffmpeg
+```
+
 ## Usage
 
 ```bash
