@@ -5,7 +5,7 @@ This project contains a Bash script that takes a WAV audio file and a directory 
 ## Features
 
 - Converts images (JPEG) into video clips with a zoom/pan effect
-- Includes `.mov` and `.mp4` video files seamlessly
+- Includes `.mov`, `.mp4`, `.mkv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.wmv`, and `.flv` video files seamlessly
 - Dynamically matches video duration to audio length
 - Optional media shuffling (no media file is reused until all have been used once; shuffling applies to each round)
 - When video files are reused, different segments are extracted to maximize variety
@@ -85,7 +85,7 @@ bash makevid.sh [audio_file.wav] [--shuffle] [--volume 3.0] [--media media_dir] 
 - `audio_file.wav` — Path to the WAV file to use as the soundtrack
 - `--shuffle` — (Optional) Randomize media selection order (no repeats until all media used; reshuffles each round)
 - `--volume 3.0` — (Optional) Audio volume multiplier (default: 3.0)
-- `--media media_dir` — (Optional) Path to directory containing `.jpg`, `.jpeg`, `.mp4`, `.mov` files
+- `--media media_dir` — (Optional) Path to directory containing `.jpg`, `.jpeg`, and supported video files (`.mp4`, `.mov`, `.mkv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.wmv`, `.flv`)
 - `--len 5` — (Optional) Base clip duration in seconds (default: 5, range: 2-10)
 - `--lenvar 10` — (Optional) Clip duration variation percentage (default: 0, range: 0-100)
 - `--verbose` — (Optional) Show detailed ffmpeg output for debugging

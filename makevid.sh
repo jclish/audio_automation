@@ -92,7 +92,7 @@ echo "🔊 Audio duration: ${AUDIO_DURATION%.*} seconds"
 # === MEDIA LIST ===
 shopt -s nullglob
 IMAGE_FILES=("$MEDIA_DIR"/*.{jpg,jpeg,JPG,JPEG})
-VIDEO_FILES=("$MEDIA_DIR"/*.{mp4,mov})
+VIDEO_FILES=("$MEDIA_DIR"/*.{mp4,mov,mkv,webm,m4v,mpg,mpeg,wmv,flv})
 ALL_MEDIA_FILES=("${IMAGE_FILES[@]}" "${VIDEO_FILES[@]}")
 shopt -u nullglob
 
@@ -104,7 +104,7 @@ MEDIA_DURATION_VALUES=()
 
 # Get video durations
 for media_file in "${ALL_MEDIA_FILES[@]}"; do
-  if [[ "$media_file" =~ \.(mp4|mov)$ ]]; then
+  if [[ "$media_file" =~ \.(mp4|mov|mkv|webm|m4v|mpg|mpeg|wmv|flv)$ ]]; then
     duration=$(ffprobe -i "$media_file" -show_entries format=duration -v quiet -of csv="p=0")
     MEDIA_DURATION_KEYS+=("$media_file")
     MEDIA_DURATION_VALUES+=("$duration")
@@ -259,7 +259,7 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
     fi
   else
     # For videos, calculate different start time based on usage count
-    if [[ "$MEDIA_FILE" =~ \.(mp4|mov)$ ]]; then
+    if [[ "$MEDIA_FILE" =~ \.(mp4|mov|mkv|webm|m4v|mpg|mpeg|wmv|flv)$ ]]; then
       total_duration=$(get_duration "$MEDIA_FILE")
       usage_count=$(get_usage_count "$MEDIA_FILE")
       
@@ -344,7 +344,7 @@ if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
       fi
     else
       # For videos, recalculate start time
-      if [[ "$LAST_MEDIA_FILE" =~ \.(mp4|mov)$ ]]; then
+      if [[ "$LAST_MEDIA_FILE" =~ \.(mp4|mov|mkv|webm|m4v|mpg|mpeg|wmv|flv)$ ]]; then
         total_duration=$(get_duration "$LAST_MEDIA_FILE")
         usage_count=$(get_usage_count "$LAST_MEDIA_FILE")
         
