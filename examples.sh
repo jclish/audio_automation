@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Audio Automation Examples Script
+# Audio Automation Examples Script (Version 2.0)
 # This script demonstrates the full power of the makevid.sh tool
 
 set -e
@@ -237,6 +237,15 @@ print_note "Match Ken Burns intensity to your content pace"
 print_note "Use random pan for variety, consistent pan for professionalism"
 echo ""
 
+# Example 16: Custom Output Resolution and Framerate
+print_header "Example 16: Custom Output Resolution and Framerate"
+print_description "Set the output video resolution and framerate for different platforms."
+print_command "bash makevid.sh audio_file.wav --width 1920 --height 1080 --fps 30"
+print_command "bash makevid.sh audio_file.wav --width 720 --height 1280 --fps 60 --len 2 --kb-zoom-start 1.0 --kb-zoom-end 1.2"
+print_note "Use --width and --height for landscape, portrait, or square videos."
+print_note "Use --fps for cinematic (24), broadcast (30), or social (60) content."
+echo ""
+
 # Tips and Best Practices
 print_header "Tips and Best Practices"
 echo ""
@@ -272,6 +281,12 @@ echo "  --len N       : Clip duration in seconds (2-10)"
 echo "  --lenvar N    : Duration variation percentage (0-100)"
 echo "  --verbose     : Show detailed ffmpeg output"
 echo "  --jobs N      : Number of parallel jobs (1-8, default: 1)"
+echo "  --width N     : Output video width (default: 1280)"
+echo "  --height N    : Output video height (default: 720)"
+echo "  --fps N       : Output framerate (default: 25)"
+echo "  --kb-zoom-start N : Ken Burns starting zoom (0.5-2.0)"
+echo "  --kb-zoom-end N   : Ken Burns ending zoom (0.5-2.0)"
+echo "  --kb-pan MODE     : Ken Burns pan direction (alternate, left-right, right-left, random)"
 echo ""
 echo -e "${GREEN}✓ Output:${NC}"
 echo "  video_only.mp4        : Video without audio"

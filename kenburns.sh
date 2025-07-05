@@ -134,6 +134,9 @@ apply_kenburns_custom() {
 #   $4 - pan direction: "left" or "right"
 #   $5 - zoom start (optional, default: 1.0)
 #   $6 - zoom end (optional, default: 1.1)
+#   $7 - width (optional, default: DEFAULT_WIDTH)
+#   $8 - height (optional, default: DEFAULT_HEIGHT)
+#   $9 - framerate (optional, default: DEFAULT_FRAMERATE)
 apply_kenburns_with_pan() {
     local input_image="$1"
     local output_video="$2"
@@ -141,6 +144,9 @@ apply_kenburns_with_pan() {
     local pan_direction="$4"
     local zoom_start="${5:-$DEFAULT_ZOOM_START}"
     local zoom_end="${6:-$DEFAULT_ZOOM_END}"
+    local width="${7:-$DEFAULT_WIDTH}"
+    local height="${8:-$DEFAULT_HEIGHT}"
+    local framerate="${9:-$DEFAULT_FRAMERATE}"
     
     # Validate inputs
     if [[ -z "$input_image" || -z "$output_video" || -z "$duration" || -z "$pan_direction" ]]; then
@@ -160,7 +166,7 @@ apply_kenburns_with_pan() {
     fi
     
     # Calculate frame count
-    local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
+    local frame_count=$(printf "%.0f" "$(echo "$framerate * $duration" | bc -l)")
     
     # Calculate zoom increment for immediate movement
     local zoom_range=$(echo "$zoom_end - $zoom_start" | bc -l)
@@ -177,10 +183,10 @@ apply_kenburns_with_pan() {
     fi
     
     # Build Ken Burns filter
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${width}x${height},trim=duration=$duration,setpts=PTS-STARTPTS"
     
     # Apply Ken Burns effect with compatible pixel format
-    if ffmpeg -y -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$DEFAULT_FRAMERATE" "$output_video" >/dev/null 2>&1; then
+    if ffmpeg -y -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$framerate" "$output_video" >/dev/null 2>&1; then
         echo "✅ Ken Burns effect applied: $output_video"
     else
         echo "❌ Error applying Ken Burns effect to $input_image"

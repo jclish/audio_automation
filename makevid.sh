@@ -18,6 +18,9 @@ MAX_JOBS=1  # default to sequential processing
 KENBURNS_ZOOM_START=1.0  # default Ken Burns zoom start
 KENBURNS_ZOOM_END=1.1    # default Ken Burns zoom end
 KENBURNS_PAN_MODE="alternate"  # default pan mode: alternate, left-right, right-left, random
+OUTPUT_WIDTH=1280  # default output width
+OUTPUT_HEIGHT=720  # default output height
+OUTPUT_FRAMERATE=25  # default output framerate
 
 # Check if audio file is provided
 if [[ -z "$AUDIO_FILE" ]]; then
@@ -33,6 +36,11 @@ if [[ -z "$AUDIO_FILE" ]]; then
   echo "  --verbose     : Show detailed ffmpeg output"
   echo "  --jobs N      : Number of parallel jobs (1-8, default: 1)"
   echo ""
+  echo "Output Options:"
+  echo "  --width N     : Output video width (default: 1280)"
+  echo "  --height N    : Output video height (default: 720)"
+  echo "  --fps N       : Output framerate (default: 25)"
+  echo ""
   echo "Ken Burns Options:"
   echo "  --kb-zoom-start N : Starting zoom level (0.5-2.0, default: 1.0)"
   echo "  --kb-zoom-end N   : Ending zoom level (0.5-2.0, default: 1.1)"
@@ -42,6 +50,7 @@ if [[ -z "$AUDIO_FILE" ]]; then
   echo "  bash makevid.sh theme.wav"
   echo "  bash makevid.sh audio.wav --jobs 4 --len 5 --lenvar 15"
   echo "  bash makevid.sh audio.wav --kb-zoom-start 0.8 --kb-zoom-end 1.3 --kb-pan random"
+  echo "  bash makevid.sh audio.wav --width 1920 --height 1080 --fps 30"
   exit 1
 fi
 
@@ -92,6 +101,18 @@ for ((i=2; i<=$#; i++)); do
       j=$((i+1))
       KENBURNS_PAN_MODE="${!j}"
       ;;
+    --width)
+      j=$((i+1))
+      OUTPUT_WIDTH="${!j}"
+      ;;
+    --height)
+      j=$((i+1))
+      OUTPUT_HEIGHT="${!j}"
+      ;;
+    --fps)
+      j=$((i+1))
+      OUTPUT_FRAMERATE="${!j}"
+      ;;
   esac
 done
 
@@ -139,6 +160,22 @@ if [[ "$KENBURNS_PAN_MODE" != "alternate" && "$KENBURNS_PAN_MODE" != "left-right
   exit 1
 fi
 
+# Validate output parameters
+if ! [[ "$OUTPUT_WIDTH" =~ ^[0-9]+$ ]] || [ "$OUTPUT_WIDTH" -lt 320 ] || [ "$OUTPUT_WIDTH" -gt 7680 ]; then
+  echo "❌ Error: Output width must be between 320 and 7680"
+  exit 1
+fi
+
+if ! [[ "$OUTPUT_HEIGHT" =~ ^[0-9]+$ ]] || [ "$OUTPUT_HEIGHT" -lt 240 ] || [ "$OUTPUT_HEIGHT" -gt 4320 ]; then
+  echo "❌ Error: Output height must be between 240 and 4320"
+  exit 1
+fi
+
+if ! [[ "$OUTPUT_FRAMERATE" =~ ^[0-9]+$ ]] || [ "$OUTPUT_FRAMERATE" -lt 1 ] || [ "$OUTPUT_FRAMERATE" -gt 120 ]; then
+  echo "❌ Error: Output framerate must be between 1 and 120"
+  exit 1
+fi
+
 # Calculate variation bounds
 VARIATION_AMOUNT=$(echo "$CLIP_DURATION * $CLIP_VARIATION / 100" | bc -l)
 MIN_DURATION=$(echo "$CLIP_DURATION - $VARIATION_AMOUNT" | bc -l)
@@ -153,6 +190,7 @@ if (( $(echo "$MAX_DURATION > 10" | bc -l) )); then
 fi
 
 echo "🎞️ Clip duration: ${CLIP_DURATION}s ± ${CLIP_VARIATION}% (${MIN_DURATION}s - ${MAX_DURATION}s)"
+echo "📐 Output resolution: ${OUTPUT_WIDTH}x${OUTPUT_HEIGHT} at ${OUTPUT_FRAMERATE} fps"
 
 # Display Ken Burns settings if custom parameters are used
 if [[ "$KENBURNS_ZOOM_START" != "1.0" || "$KENBURNS_ZOOM_END" != "1.1" || "$KENBURNS_PAN_MODE" != "alternate" ]]; then
@@ -313,9 +351,9 @@ process_clip() {
     local pan_direction=$(get_kenburns_pan_direction "$clip_count")
     
     if $VERBOSE; then
-      apply_kenburns_with_pan "$media_file" "$out_clip" "$duration" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END"
+      apply_kenburns_with_pan "$media_file" "$out_clip" "$duration" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" "$OUTPUT_WIDTH" "$OUTPUT_HEIGHT" "$OUTPUT_FRAMERATE"
     else
-      apply_kenburns_with_pan "$media_file" "$out_clip" "$duration" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" >/dev/null 2>&1
+      apply_kenburns_with_pan "$media_file" "$out_clip" "$duration" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" "$OUTPUT_WIDTH" "$OUTPUT_HEIGHT" "$OUTPUT_FRAMERATE" >/dev/null 2>&1
     fi
   else
     # For videos, calculate different start time based on usage count
@@ -339,11 +377,11 @@ process_clip() {
     
     if $VERBOSE; then
       ffmpeg -y -ss "$start_time" -t "$duration" -i "$media_file" \
-        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        -vf "fps=${OUTPUT_FRAMERATE},scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS,format=yuv420p" \
         -an -c:v libx264 -preset fast -crf 23 "$out_clip"
     else
       ffmpeg -y -ss "$start_time" -t "$duration" -i "$media_file" \
-        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        -vf "fps=${OUTPUT_FRAMERATE},scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS,format=yuv420p" \
         -an -c:v libx264 -preset fast -crf 23 -loglevel "$FFMPEG_LOGLEVEL" "$out_clip" >/dev/null 2>&1
     fi
   fi
@@ -504,15 +542,18 @@ if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
       # Get pan direction based on Ken Burns mode
       local pan_direction=$(get_kenburns_pan_direction "$LAST_CLIP_INDEX")
       
+      # Ensure duration is properly formatted
+      DURATION_DIFF_FORMATTED=$(printf "%.3f" "$DURATION_DIFF")
+      
       if $VERBOSE; then
-        apply_kenburns_with_pan "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END"
+        apply_kenburns_with_pan "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF_FORMATTED" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" "$OUTPUT_WIDTH" "$OUTPUT_HEIGHT" "$OUTPUT_FRAMERATE"
       else
         echo -n "Adjusting final clip ["
         for ((p=0; p<20; p++)); do
           echo -n "█"
         done
         echo -n "] "
-        apply_kenburns_with_pan "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" >/dev/null 2>&1
+        apply_kenburns_with_pan "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF_FORMATTED" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" "$OUTPUT_WIDTH" "$OUTPUT_HEIGHT" "$OUTPUT_FRAMERATE" >/dev/null 2>&1
         echo "Done!"
       fi
     else
@@ -537,9 +578,12 @@ if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
         start_time=0
       fi
       
+      # Ensure duration is properly formatted
+      DURATION_DIFF_FORMATTED=$(printf "%.3f" "$DURATION_DIFF")
+      
       if $VERBOSE; then
-        ffmpeg -y -ss "$start_time" -t "$DURATION_DIFF" -i "$LAST_MEDIA_FILE" \
-          -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        ffmpeg -y -ss "$start_time" -t "$DURATION_DIFF_FORMATTED" -i "$LAST_MEDIA_FILE" \
+          -vf "fps=${OUTPUT_FRAMERATE},scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS,format=yuv420p" \
           -an -c:v libx264 -preset fast -crf 23 "$LAST_CLIP_FILE"
       else
         echo -n "Adjusting final clip ["
@@ -547,8 +591,8 @@ if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
           echo -n "█"
         done
         echo -n "] "
-        ffmpeg -y -ss "$start_time" -t "$DURATION_DIFF" -i "$LAST_MEDIA_FILE" \
-          -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        ffmpeg -y -ss "$start_time" -t "$DURATION_DIFF_FORMATTED" -i "$LAST_MEDIA_FILE" \
+          -vf "fps=${OUTPUT_FRAMERATE},scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS,format=yuv420p" \
           -an -c:v libx264 -preset fast -crf 23 -loglevel "$FFMPEG_LOGLEVEL" "$LAST_CLIP_FILE" >/dev/null 2>&1
         echo "Done!"
       fi
