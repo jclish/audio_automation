@@ -134,6 +134,76 @@ apply_kenburns_custom() {
     return $exit_code
 }
 
+# Apply Ken Burns effect with custom zoom and pan direction
+# Parameters:
+#   $1 - input image file
+#   $2 - output video file
+#   $3 - duration in seconds
+#   $4 - pan direction: "left" or "right"
+#   $5 - zoom start (optional, default: 1.0)
+#   $6 - zoom end (optional, default: 1.1)
+apply_kenburns_with_pan() {
+    local input_image="$1"
+    local output_video="$2"
+    local duration="$3"
+    local pan_direction="$4"
+    local zoom_start="${5:-$DEFAULT_ZOOM_START}"
+    local zoom_end="${6:-$DEFAULT_ZOOM_END}"
+    
+    # Validate inputs
+    if [[ -z "$input_image" || -z "$output_video" || -z "$duration" || -z "$pan_direction" ]]; then
+        echo "❌ Error: Missing required parameters for apply_kenburns_with_pan"
+        echo "Usage: apply_kenburns_with_pan <input_image> <output_video> <duration> <pan_direction> [zoom_start] [zoom_end]"
+        return 1
+    fi
+    
+    if [[ ! -f "$input_image" ]]; then
+        echo "❌ Error: Input image file not found: $input_image"
+        return 1
+    fi
+    
+    if [[ "$pan_direction" != "left" && "$pan_direction" != "right" ]]; then
+        echo "❌ Error: Pan direction must be 'left' or 'right'"
+        return 1
+    fi
+    
+    # Calculate frame count
+    local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
+    
+    # Calculate zoom increment
+    local zoom_increment=$(echo "($zoom_end - $zoom_start) / $frame_count" | bc -l)
+    
+    # Determine pan direction
+    local pan_x
+    if [[ "$pan_direction" == "left" ]]; then
+        # Left to right pan
+        pan_x="iw*(1-zoom)*on/(in-1)"
+    else
+        # Right to left pan
+        pan_x="iw*(1-zoom)*(1 - on/(in-1))"
+    fi
+    
+    # Build Ken Burns filter with custom zoom and pan
+    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    
+    echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
+    echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: ${pan_direction}→$([ "$pan_direction" == "left" ] && echo "right" || echo "left")"
+    
+    # Apply the effect using ffmpeg
+    ffmpeg -y -loop 1 -framerate "$DEFAULT_FRAMERATE" -t "$duration" -i "$input_image" \
+        -vf "$kenburns_filter,format=yuv420p" \
+        -c:v libx264 -pix_fmt yuv420p "$output_video"
+    
+    local exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
+        echo "✅ Ken Burns effect applied successfully"
+    else
+        echo "❌ Error applying Ken Burns effect (exit code: $exit_code)"
+    fi
+    
+    return $exit_code
+}
+
 # Get Ken Burns filter string (for advanced usage)
 # Parameters:
 #   $1 - duration in seconds
@@ -167,10 +237,12 @@ get_kenburns_filter() {
 # Export functions for use in other scripts
 export -f apply_kenburns
 export -f apply_kenburns_custom
+export -f apply_kenburns_with_pan
 export -f get_kenburns_filter
 
 echo "🎬 Ken Burns module loaded successfully"
 echo "Available functions:"
 echo "  - apply_kenburns <input> <output> <duration> [clip_index]"
 echo "  - apply_kenburns_custom <input> <output> <duration> [clip_index] [zoom_start] [zoom_end]"
+echo "  - apply_kenburns_with_pan <input> <output> <duration> <pan_direction> [zoom_start] [zoom_end]"
 echo "  - get_kenburns_filter <duration> [clip_index] [zoom_start] [zoom_end]" 

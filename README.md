@@ -91,6 +91,9 @@ bash makevid.sh [audio_file.wav] [--shuffle] [--volume 3.0] [--media media_dir] 
 - `--lenvar 10` — (Optional) Clip duration variation percentage (default: 0, range: 0-100)
 - `--verbose` — (Optional) Show detailed ffmpeg output for debugging
 - `--jobs 4` — (Optional) Number of parallel jobs for faster processing (default: 1, range: 1-8)
+- `--kb-zoom-start 1.0` — (Optional) Ken Burns starting zoom level (default: 1.0, range: 0.5-2.0)
+- `--kb-zoom-end 1.1` — (Optional) Ken Burns ending zoom level (default: 1.1, range: 0.5-2.0)
+- `--kb-pan alternate` — (Optional) Ken Burns pan direction: alternate, left-right, right-left, random (default: alternate)
 
 ### Examples
 
@@ -118,6 +121,11 @@ bash makevid.sh theme.wav --jobs 4 --len 5 --lenvar 15
 
 # High-performance processing with all features
 bash makevid.sh theme.wav --jobs 8 --shuffle --volume 3.0 --len 4 --lenvar 20
+
+# Custom Ken Burns effects
+bash makevid.sh theme.wav --kb-zoom-start 0.8 --kb-zoom-end 1.3 --kb-pan random
+bash makevid.sh theme.wav --kb-zoom-start 1.0 --kb-zoom-end 1.2 --kb-pan left-right
+bash makevid.sh theme.wav --kb-zoom-start 0.6 --kb-zoom-end 1.5
 ```
 
 ### Learning Examples
@@ -146,7 +154,33 @@ The script uses a modular Ken Burns effect system (`kenburns.sh`) that provides:
 
 - `apply_kenburns()` — Basic Ken Burns effect with alternating pan directions
 - `apply_kenburns_custom()` — Custom zoom settings
+- `apply_kenburns_with_pan()` — Custom zoom and pan direction
 - `get_kenburns_filter()` — Get filter string for advanced usage
+
+### Ken Burns Parameters
+
+- **Zoom Range**: 0.5-2.0 (0.5 = zoomed out, 2.0 = zoomed in)
+- **Pan Modes**:
+  - `alternate` (default): Alternates between left→right and right→left
+  - `left-right`: All clips pan left to right
+  - `right-left`: All clips pan right to left  
+  - `random`: Random pan direction for each clip (deterministic based on clip index)
+
+### Ken Burns Examples
+
+```bash
+# Dramatic zoom effect
+bash makevid.sh audio.wav --kb-zoom-start 0.8 --kb-zoom-end 1.4
+
+# Subtle zoom with consistent direction
+bash makevid.sh audio.wav --kb-zoom-start 1.0 --kb-zoom-end 1.2 --kb-pan left-right
+
+# Random pan for variety
+bash makevid.sh audio.wav --kb-pan random
+
+# Extreme zoom for dramatic effect
+bash makevid.sh audio.wav --kb-zoom-start 0.6 --kb-zoom-end 1.5
+```
 
 ## Development Notes
 

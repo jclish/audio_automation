@@ -15,6 +15,9 @@ CLIP_DURATION=5  # default duration per image clip in seconds
 CLIP_VARIATION=0  # default variation percentage
 VERBOSE=false  # default to clean output
 MAX_JOBS=1  # default to sequential processing
+KENBURNS_ZOOM_START=1.0  # default Ken Burns zoom start
+KENBURNS_ZOOM_END=1.1    # default Ken Burns zoom end
+KENBURNS_PAN_MODE="alternate"  # default pan mode: alternate, left-right, right-left, random
 
 # Check if audio file is provided
 if [[ -z "$AUDIO_FILE" ]]; then
@@ -30,9 +33,15 @@ if [[ -z "$AUDIO_FILE" ]]; then
   echo "  --verbose     : Show detailed ffmpeg output"
   echo "  --jobs N      : Number of parallel jobs (1-8, default: 1)"
   echo ""
+  echo "Ken Burns Options:"
+  echo "  --kb-zoom-start N : Starting zoom level (0.5-2.0, default: 1.0)"
+  echo "  --kb-zoom-end N   : Ending zoom level (0.5-2.0, default: 1.1)"
+  echo "  --kb-pan MODE     : Pan direction: alternate, left-right, right-left, random"
+  echo ""
   echo "Examples:"
   echo "  bash makevid.sh theme.wav"
   echo "  bash makevid.sh audio.wav --jobs 4 --len 5 --lenvar 15"
+  echo "  bash makevid.sh audio.wav --kb-zoom-start 0.8 --kb-zoom-end 1.3 --kb-pan random"
   exit 1
 fi
 
@@ -71,6 +80,18 @@ for ((i=2; i<=$#; i++)); do
       j=$((i+1))
       MAX_JOBS="${!j}"
       ;;
+    --kb-zoom-start)
+      j=$((i+1))
+      KENBURNS_ZOOM_START="${!j}"
+      ;;
+    --kb-zoom-end)
+      j=$((i+1))
+      KENBURNS_ZOOM_END="${!j}"
+      ;;
+    --kb-pan)
+      j=$((i+1))
+      KENBURNS_PAN_MODE="${!j}"
+      ;;
   esac
 done
 
@@ -102,6 +123,22 @@ if ! [[ "$MAX_JOBS" =~ ^[0-9]+$ ]] || [ "$MAX_JOBS" -lt 1 ] || [ "$MAX_JOBS" -gt
   exit 1
 fi
 
+# Validate Ken Burns parameters
+if (( $(echo "$KENBURNS_ZOOM_START < 0.5" | bc -l) )) || (( $(echo "$KENBURNS_ZOOM_START > 2.0" | bc -l) )); then
+  echo "❌ Error: Ken Burns zoom start must be between 0.5 and 2.0"
+  exit 1
+fi
+
+if (( $(echo "$KENBURNS_ZOOM_END < 0.5" | bc -l) )) || (( $(echo "$KENBURNS_ZOOM_END > 2.0" | bc -l) )); then
+  echo "❌ Error: Ken Burns zoom end must be between 0.5 and 2.0"
+  exit 1
+fi
+
+if [[ "$KENBURNS_PAN_MODE" != "alternate" && "$KENBURNS_PAN_MODE" != "left-right" && "$KENBURNS_PAN_MODE" != "right-left" && "$KENBURNS_PAN_MODE" != "random" ]]; then
+  echo "❌ Error: Ken Burns pan mode must be: alternate, left-right, right-left, or random"
+  exit 1
+fi
+
 # Calculate variation bounds
 VARIATION_AMOUNT=$(echo "$CLIP_DURATION * $CLIP_VARIATION / 100" | bc -l)
 MIN_DURATION=$(echo "$CLIP_DURATION - $VARIATION_AMOUNT" | bc -l)
@@ -116,6 +153,11 @@ if (( $(echo "$MAX_DURATION > 10" | bc -l) )); then
 fi
 
 echo "🎞️ Clip duration: ${CLIP_DURATION}s ± ${CLIP_VARIATION}% (${MIN_DURATION}s - ${MAX_DURATION}s)"
+
+# Display Ken Burns settings if custom parameters are used
+if [[ "$KENBURNS_ZOOM_START" != "1.0" || "$KENBURNS_ZOOM_END" != "1.1" || "$KENBURNS_PAN_MODE" != "alternate" ]]; then
+  echo "🎬 Ken Burns settings: zoom ${KENBURNS_ZOOM_START}→${KENBURNS_ZOOM_END}, pan: ${KENBURNS_PAN_MODE}"
+fi
 
 # === PREPARE ===
 echo "🎬 Preparing workspace..."
@@ -186,6 +228,39 @@ get_duration() {
   echo ""
 }
 
+# Helper function to determine Ken Burns pan direction
+get_kenburns_pan_direction() {
+  local clip_index="$1"
+  
+  case "$KENBURNS_PAN_MODE" in
+    "left-right")
+      echo "left"
+      ;;
+    "right-left")
+      echo "right"
+      ;;
+    "alternate")
+      if (( clip_index % 2 == 0 )); then
+        echo "left"
+      else
+        echo "right"
+      fi
+      ;;
+    "random")
+      # Use clip index as seed for consistent random behavior
+      local random_val=$(( (clip_index * 1103515245 + 12345) % 2 ))
+      if [ "$random_val" -eq 0 ]; then
+        echo "left"
+      else
+        echo "right"
+      fi
+      ;;
+    *)
+      echo "left"  # fallback
+      ;;
+  esac
+}
+
 # === SHUFFLE IF REQUESTED ===
 if $SHUFFLE; then
   echo "🎲 Shuffling media files..."
@@ -234,10 +309,13 @@ process_clip() {
   local ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
   
   if [[ "$ext_lower" =~ ^(jpg|jpeg)$ ]]; then
+    # Get pan direction based on Ken Burns mode
+    local pan_direction=$(get_kenburns_pan_direction "$clip_count")
+    
     if $VERBOSE; then
-      apply_kenburns "$media_file" "$out_clip" "$duration" "$clip_count"
+      apply_kenburns_with_pan "$media_file" "$out_clip" "$duration" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END"
     else
-      apply_kenburns "$media_file" "$out_clip" "$duration" "$clip_count" >/dev/null 2>&1
+      apply_kenburns_with_pan "$media_file" "$out_clip" "$duration" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" >/dev/null 2>&1
     fi
   else
     # For videos, calculate different start time based on usage count
@@ -423,15 +501,18 @@ if (( $(echo "$DURATION_DIFF > 0.1" | bc -l) )); then
     EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
     
     if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
+      # Get pan direction based on Ken Burns mode
+      local pan_direction=$(get_kenburns_pan_direction "$LAST_CLIP_INDEX")
+      
       if $VERBOSE; then
-        apply_kenburns "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$LAST_CLIP_INDEX"
+        apply_kenburns_with_pan "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END"
       else
         echo -n "Adjusting final clip ["
         for ((p=0; p<20; p++)); do
           echo -n "█"
         done
         echo -n "] "
-        apply_kenburns "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$LAST_CLIP_INDEX" >/dev/null 2>&1
+        apply_kenburns_with_pan "$LAST_MEDIA_FILE" "$LAST_CLIP_FILE" "$DURATION_DIFF" "$pan_direction" "$KENBURNS_ZOOM_START" "$KENBURNS_ZOOM_END" >/dev/null 2>&1
         echo "Done!"
       fi
     else

@@ -12,10 +12,10 @@
 - [x] Create installation script (`install.sh`) to help users set up dependencies
 - [x] Add support for more video formats (now supports mp4, mov, mkv, webm, m4v, mpg, mpeg, wmv, flv)
 - [x] Implement parallel processing for faster video generation (2-8x speed improvement with --jobs parameter)
+- [x] Add option to specify custom Ken Burns effect parameters (zoom start/end, pan direction)
 
 ## Planned 🔄
 
-- [ ] Add option to specify custom Ken Burns effect parameters
 - [ ] Create a GUI wrapper for easier usage
 - [ ] Add support for audio fade in/out effects
 - [ ] Implement video quality presets (low, medium, high)
