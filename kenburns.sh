@@ -42,16 +42,17 @@ apply_kenburns() {
     local pan_x
     if (( clip_index % 2 == 0 )); then
         # Left to right pan - start from left edge immediately
-        pan_x="iw*(1-zoom)*on/in"
+        pan_x="iw*(1-1.1)*(on+1)/in"
     else
         # Right to left pan - start from right edge immediately
-        pan_x="iw*(1-zoom)*(1 - on/in)"
+        pan_x="iw*(1-1.1)*(1 - (on+1)/in)"
     fi
     
     # Build Ken Burns filter with immediate movement
-    local kenburns_filter="zoompan=z='zoom+0.001':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Use zoompan with (on+1)/in for immediate movement
+    local kenburns_filter="zoompan=z='1.0+0.1*(on+1)/in':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
-    echo "�� Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
+    echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Pan direction: $([ $((clip_index % 2)) -eq 0 ] && echo "left→right" || echo "right→left")"
     
     # Apply the effect using ffmpeg
@@ -100,21 +101,23 @@ apply_kenburns_custom() {
     # Calculate frame count
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
     
-    # Calculate zoom increment with immediate movement
-    local zoom_increment=$(echo "($zoom_end - $zoom_start) / $frame_count" | bc -l)
+    # Calculate zoom increment for immediate movement
+    local zoom_range=$(echo "$zoom_end - $zoom_start" | bc -l)
+    local zoom_increment=$(echo "$zoom_range / $frame_count" | bc -l)
     
     # Determine pan direction based on clip index
     local pan_x
     if (( clip_index % 2 == 0 )); then
         # Left to right pan - start from left edge immediately
-        pan_x="iw*(1-zoom)*on/in"
+        pan_x="iw*(1-$zoom_end)*(on+1)/in"
     else
         # Right to left pan - start from right edge immediately
-        pan_x="iw*(1-zoom)*(1 - on/in)"
+        pan_x="iw*(1-$zoom_end)*(1 - (on+1)/in)"
     fi
     
     # Build Ken Burns filter with immediate movement
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Use zoompan with (on+1)/in for immediate movement
+    local kenburns_filter="zoompan=z=$zoom_end:x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
     echo "🎬 Applying custom Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: $([ $((clip_index % 2)) -eq 0 ] && echo "left→right" || echo "right→left")"
@@ -170,23 +173,25 @@ apply_kenburns_with_pan() {
     # Calculate frame count
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
     
-    # Calculate zoom increment with immediate movement
-    local zoom_increment=$(echo "($zoom_end - $zoom_start) / $frame_count" | bc -l)
+    # Calculate zoom increment for immediate movement
+    local zoom_range=$(echo "$zoom_end - $zoom_start" | bc -l)
+    local zoom_increment=$(echo "$zoom_range / $frame_count" | bc -l)
     
     # Determine pan direction with immediate movement
     local pan_x
     if [[ "$pan_direction" == "left" ]]; then
         # Left to right pan - start from left edge immediately
-        pan_x="iw*(1-zoom)*on/in"
+        pan_x="iw*(1-$zoom_end)*(on+1)/in"
     else
         # Right to left pan - start from right edge immediately  
-        pan_x="iw*(1-zoom)*(1 - on/in)"
+        pan_x="iw*(1-$zoom_end)*(1 - (on+1)/in)"
     fi
     
     # Build Ken Burns filter with immediate movement
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Use zoompan with (on+1)/in for immediate movement
+    local kenburns_filter="zoompan=z=$zoom_end:x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
-    echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
+    echo "�� Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: ${pan_direction}→$([ "$pan_direction" == "left" ] && echo "right" || echo "left")"
     
     # Apply the effect using ffmpeg
@@ -222,16 +227,17 @@ get_kenburns_filter() {
     fi
     
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
-    local zoom_increment=$(echo "($zoom_end - $zoom_start) / $frame_count" | bc -l)
+    local zoom_range=$(echo "$zoom_end - $zoom_start" | bc -l)
+    local zoom_increment=$(echo "$zoom_range / $frame_count" | bc -l)
     
     local pan_x
     if (( clip_index % 2 == 0 )); then
-        pan_x="iw*(1-zoom)*on/in"
+        pan_x="iw*(1-$zoom_end)*(on+1)/in"
     else
-        pan_x="iw*(1-zoom)*(1 - on/in)"
+        pan_x="iw*(1-$zoom_end)*(1 - (on+1)/in)"
     fi
     
-    echo "zoompan=z='$zoom_start+$zoom_increment*on':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    echo "zoompan=z=$zoom_end:x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
 }
 
 # Export functions for use in other scripts
