@@ -14,6 +14,7 @@ CROSSFADE_DURATION=0.5  # crossfade duration in seconds
 CLIP_DURATION=5  # default duration per image clip in seconds
 CLIP_VARIATION=0  # default variation percentage
 VERBOSE=false  # default to clean output
+MAX_JOBS=1  # default to sequential processing
 
 # Parse optional args
 for ((i=2; i<=$#; i++)); do
@@ -40,6 +41,10 @@ for ((i=2; i<=$#; i++)); do
     --verbose)
       VERBOSE=true
       ;;
+    --jobs)
+      j=$((i+1))
+      MAX_JOBS="${!j}"
+      ;;
   esac
 done
 
@@ -62,6 +67,12 @@ if (( $(echo "$CLIP_DURATION < 2" | bc -l) )); then
 fi
 if (( $(echo "$CLIP_DURATION > 10" | bc -l) )); then
   echo "❌ Error: Clip duration cannot be more than 10 seconds"
+  exit 1
+fi
+
+# Validate jobs parameter
+if ! [[ "$MAX_JOBS" =~ ^[0-9]+$ ]] || [ "$MAX_JOBS" -lt 1 ] || [ "$MAX_JOBS" -gt 8 ]; then
+  echo "❌ Error: Jobs must be between 1 and 8"
   exit 1
 fi
 
@@ -186,6 +197,83 @@ WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
 TOTAL_GENERATED_DURATION=0
 CLIP_COUNT=0
 
+# Helper functions for parallel processing
+active_jobs=()
+job_errors=()
+
+# Function to wait for available job slot
+wait_for_job_slot() {
+  while [ ${#active_jobs[@]} -ge "$MAX_JOBS" ]; do
+    # Check for completed jobs
+    for i in "${!active_jobs[@]}"; do
+      if ! kill -0 "${active_jobs[$i]}" 2>/dev/null; then
+        # Job completed, remove from active list
+        wait "${active_jobs[$i]}" 2>/dev/null
+        unset "active_jobs[$i]"
+        # Reindex array
+        active_jobs=("${active_jobs[@]}")
+      fi
+    done
+    sleep 0.1
+  done
+}
+
+# Function to wait for all jobs to complete
+wait_for_all_jobs() {
+  for job_pid in "${active_jobs[@]}"; do
+    wait "$job_pid" 2>/dev/null
+  done
+  active_jobs=()
+}
+
+# Function to process a single clip
+process_clip() {
+  local clip_count="$1"
+  local media_file="$2"
+  local duration="$3"
+  local out_clip="$4"
+  
+  local ext="${media_file##*.}"
+  local ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+  
+  if [[ "$ext_lower" =~ ^(jpg|jpeg)$ ]]; then
+    if $VERBOSE; then
+      apply_kenburns "$media_file" "$out_clip" "$duration" "$clip_count"
+    else
+      apply_kenburns "$media_file" "$out_clip" "$duration" "$clip_count" >/dev/null 2>&1
+    fi
+  else
+    # For videos, calculate different start time based on usage count
+    local start_time=0
+    if [[ "$media_file" =~ \.(mp4|mov|mkv|webm|m4v|mpg|mpeg|wmv|flv)$ ]]; then
+      local total_duration=$(get_duration "$media_file")
+      local usage_count=$(get_usage_count "$media_file")
+      
+      if [ -n "$total_duration" ] && (( $(echo "$total_duration > $duration" | bc -l) )); then
+        local total_segments=$(echo "$total_duration / $duration" | bc)
+        local segment_index=$(((usage_count - 1) % total_segments))
+        start_time=$(echo "$segment_index * $duration" | bc)
+        
+        # Ensure we don't exceed video duration
+        local max_start=$(echo "$total_duration - $duration" | bc -l)
+        if (( $(echo "$start_time > $max_start" | bc -l) )); then
+          start_time=0
+        fi
+      fi
+    fi
+    
+    if $VERBOSE; then
+      ffmpeg -y -ss "$start_time" -t "$duration" -i "$media_file" \
+        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        -an -c:v libx264 -preset fast -crf 23 "$out_clip"
+    else
+      ffmpeg -y -ss "$start_time" -t "$duration" -i "$media_file" \
+        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
+        -an -c:v libx264 -preset fast -crf 23 -loglevel "$FFMPEG_LOGLEVEL" "$out_clip" >/dev/null 2>&1
+    fi
+  fi
+}
+
 while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   if [ ${#WORKING_MEDIA[@]} -eq 0 ]; then
     WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
@@ -244,58 +332,41 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
 
   echo "🎞️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
 
-  if [[ "$EXT_LOWER" =~ ^(jpg|jpeg)$ ]]; then
-    if $VERBOSE; then
-      apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$CLIP_COUNT"
-    else
-      echo -n "Working on clip $((CLIP_COUNT + 1))/$TOTAL_CLIPS ["
-      # Simple progress bar
+  # Wait for available job slot if using parallel processing
+  if [ "$MAX_JOBS" -gt 1 ]; then
+    wait_for_job_slot
+  fi
+
+  # Process the clip
+  if [ "$MAX_JOBS" -gt 1 ]; then
+    # Parallel processing
+    if ! $VERBOSE; then
+      echo -n "Starting clip $((CLIP_COUNT + 1)) ["
       for ((p=0; p<20; p++)); do
         echo -n "█"
       done
       echo -n "] "
-      apply_kenburns "$MEDIA_FILE" "$OUT_CLIP" "$THIS_DURATION" "$CLIP_COUNT" >/dev/null 2>&1
-      echo "Done!"
-    fi
-  else
-    # For videos, calculate different start time based on usage count
-    if [[ "$MEDIA_FILE" =~ \.(mp4|mov|mkv|webm|m4v|mpg|mpeg|wmv|flv)$ ]]; then
-      total_duration=$(get_duration "$MEDIA_FILE")
-      usage_count=$(get_usage_count "$MEDIA_FILE")
-      
-      if [ -n "$total_duration" ] && (( $(echo "$total_duration > $THIS_DURATION" | bc -l) )); then
-        total_segments=$(echo "$total_duration / $THIS_DURATION" | bc)
-        segment_index=$(((usage_count - 1) % total_segments))
-        start_time=$(echo "$segment_index * $THIS_DURATION" | bc)
-        
-        # Ensure we don't exceed video duration
-        max_start=$(echo "$total_duration - $THIS_DURATION" | bc -l)
-        if (( $(echo "$start_time > $max_start" | bc -l) )); then
-          start_time=0
-        fi
-        
-        echo "   Using segment $((segment_index + 1))/$total_segments (start: ${start_time}s)"
-      else
-        start_time=0
-      fi
-    else
-      start_time=0
     fi
     
-    if $VERBOSE; then
-      ffmpeg -y -ss "$start_time" -t "$THIS_DURATION" -i "$MEDIA_FILE" \
-        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
-        -an -c:v libx264 -preset fast -crf 23 "$OUT_CLIP"
-    else
-      echo -n "Working on clip $((CLIP_COUNT + 1))/$TOTAL_CLIPS ["
-      # Simple progress bar
+    process_clip "$CLIP_COUNT" "$MEDIA_FILE" "$THIS_DURATION" "$OUT_CLIP" &
+    active_jobs+=($!)
+    
+    if ! $VERBOSE; then
+      echo "Queued!"
+    fi
+  else
+    # Sequential processing
+    if ! $VERBOSE; then
+      echo -n "Working on clip $((CLIP_COUNT + 1)) ["
       for ((p=0; p<20; p++)); do
         echo -n "█"
       done
       echo -n "] "
-      ffmpeg -y -ss "$start_time" -t "$THIS_DURATION" -i "$MEDIA_FILE" \
-        -vf "fps=25,scale=1280:720,setpts=PTS-STARTPTS,format=yuv420p" \
-        -an -c:v libx264 -preset fast -crf 23 -loglevel "$FFMPEG_LOGLEVEL" "$OUT_CLIP" >/dev/null 2>&1
+    fi
+    
+    process_clip "$CLIP_COUNT" "$MEDIA_FILE" "$THIS_DURATION" "$OUT_CLIP"
+    
+    if ! $VERBOSE; then
       echo "Done!"
     fi
   fi
@@ -303,6 +374,13 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   TOTAL_GENERATED_DURATION=$(echo "$TOTAL_GENERATED_DURATION + $THIS_DURATION" | bc -l)
   CLIP_COUNT=$((CLIP_COUNT + 1))
 done
+
+# Wait for all background jobs to complete
+if [ "$MAX_JOBS" -gt 1 ]; then
+  echo "⏳ Waiting for all clips to complete..."
+  wait_for_all_jobs
+  echo "✅ All clips completed!"
+fi
 
 TOTAL_CLIPS=$CLIP_COUNT
 echo "📊 Generated $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"

@@ -11,10 +11,10 @@
 - [x] Replace Unicode escape sequences with actual emoji characters for better terminal compatibility
 - [x] Create installation script (`install.sh`) to help users set up dependencies
 - [x] Add support for more video formats (now supports mp4, mov, mkv, webm, m4v, mpg, mpeg, wmv, flv)
+- [x] Implement parallel processing for faster video generation (2-8x speed improvement with --jobs parameter)
 
 ## Planned 🔄
 
-- [ ] Implement parallel processing for faster video generation
 - [ ] Add option to specify custom Ken Burns effect parameters
 - [ ] Create a GUI wrapper for easier usage
 - [ ] Add support for audio fade in/out effects
