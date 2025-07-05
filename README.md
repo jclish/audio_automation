@@ -112,6 +112,21 @@ bash makevid.sh theme.wav --media "/Users/jclish/Downloads/Podcast Materials/Ado
 bash makevid.sh theme.wav --shuffle --volume 4.0 --media "/path/to/media" --len 4 --lenvar 20 --verbose
 ```
 
+### Learning Examples
+
+Run the examples script to see all features in action:
+
+```bash
+./examples.sh
+```
+
+This will show you:
+- Basic usage patterns
+- Advanced feature combinations
+- Troubleshooting tips
+- Best practices for different content types
+- Professional workflows
+
 ## Output
 
 - `video_only.mp4` — The generated video track
@@ -139,4 +154,3 @@ MIT or public domain — feel free to adapt and share.
 ---
 
 Crafted with ❤️ and a cooling breeze from the cold aisle.
-
