@@ -16,6 +16,32 @@ CLIP_VARIATION=0  # default variation percentage
 VERBOSE=false  # default to clean output
 MAX_JOBS=1  # default to sequential processing
 
+# Check if audio file is provided
+if [[ -z "$AUDIO_FILE" ]]; then
+  echo "❌ Error: Audio file is required"
+  echo "Usage: bash makevid.sh <audio_file.wav> [options]"
+  echo ""
+  echo "Options:"
+  echo "  --shuffle     : Randomize media selection"
+  echo "  --volume N    : Audio volume multiplier (default: 3.0)"
+  echo "  --media DIR   : Custom media directory"
+  echo "  --len N       : Clip duration in seconds (2-10)"
+  echo "  --lenvar N    : Duration variation percentage (0-100)"
+  echo "  --verbose     : Show detailed ffmpeg output"
+  echo "  --jobs N      : Number of parallel jobs (1-8, default: 1)"
+  echo ""
+  echo "Examples:"
+  echo "  bash makevid.sh theme.wav"
+  echo "  bash makevid.sh audio.wav --jobs 4 --len 5 --lenvar 15"
+  exit 1
+fi
+
+# Check if audio file exists
+if [[ ! -f "$AUDIO_FILE" ]]; then
+  echo "❌ Error: Audio file not found: $AUDIO_FILE"
+  exit 1
+fi
+
 # Parse optional args
 for ((i=2; i<=$#; i++)); do
   case "${!i}" in
@@ -187,44 +213,15 @@ if [ "$NUM_MEDIA" -eq 0 ]; then
   exit 1
 fi
 
-# === CALCULATE CLIP COUNTS ===
-# Estimate total clips needed (will be adjusted based on actual durations)
-ESTIMATED_CLIPS=$(echo "$AUDIO_DURATION / $CLIP_DURATION" | bc)
-echo "🎬 Estimating $ESTIMATED_CLIPS clips with variable durations"
-
-# === GENERATE CLIPS ===
-WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
-TOTAL_GENERATED_DURATION=0
-CLIP_COUNT=0
+# === GENERATE CLIP PLAN ===
+CLIP_PLAN_MEDIA=()
+CLIP_PLAN_DURATION=()
+CLIP_PLAN_OUT=()
+CLIP_PLAN_INDEX=()
 
 # Helper functions for parallel processing
 active_jobs=()
 job_errors=()
-
-# Function to wait for available job slot
-wait_for_job_slot() {
-  while [ ${#active_jobs[@]} -ge "$MAX_JOBS" ]; do
-    # Check for completed jobs
-    for i in "${!active_jobs[@]}"; do
-      if ! kill -0 "${active_jobs[$i]}" 2>/dev/null; then
-        # Job completed, remove from active list
-        wait "${active_jobs[$i]}" 2>/dev/null
-        unset "active_jobs[$i]"
-        # Reindex array
-        active_jobs=("${active_jobs[@]}")
-      fi
-    done
-    sleep 0.1
-  done
-}
-
-# Function to wait for all jobs to complete
-wait_for_all_jobs() {
-  for job_pid in "${active_jobs[@]}"; do
-    wait "$job_pid" 2>/dev/null
-  done
-  active_jobs=()
-}
 
 # Function to process a single clip
 process_clip() {
@@ -274,6 +271,12 @@ process_clip() {
   fi
 }
 
+WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
+TOTAL_GENERATED_DURATION=0
+CLIP_COUNT=0
+
+echo "🎬 Planning clips..."
+
 while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   if [ ${#WORKING_MEDIA[@]} -eq 0 ]; then
     WORKING_MEDIA=("${ALL_MEDIA_FILES[@]}")
@@ -283,24 +286,18 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
   fi
   MEDIA_FILE="${WORKING_MEDIA[0]}"
   WORKING_MEDIA=("${WORKING_MEDIA[@]:1}")
-  
+
   # Track usage count
   usage_count=$(get_usage_count "$MEDIA_FILE")
   set_usage_count "$MEDIA_FILE" $((usage_count + 1))
-  
-  OUT_CLIP="$TMP_DIR/clip_${CLIP_COUNT}.mp4"
 
-  EXT="${MEDIA_FILE##*.}"
-  EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+  OUT_CLIP="$TMP_DIR/clip_${CLIP_COUNT}.mp4"
 
   # Calculate variable duration using systematic variation (sine wave)
   if [ "$CLIP_VARIATION" -gt 0 ]; then
-    # Use sine wave for smooth variation
     SINE_VALUE=$(echo "s($CLIP_COUNT * 0.5)" | bc -l)
     VARIATION_FACTOR=$(echo "$SINE_VALUE * $VARIATION_AMOUNT" | bc -l)
     THIS_DURATION=$(echo "$CLIP_DURATION + $VARIATION_FACTOR" | bc -l)
-    
-    # Ensure within bounds
     if (( $(echo "$THIS_DURATION < $MIN_DURATION" | bc -l) )); then
       THIS_DURATION="$MIN_DURATION"
     fi
@@ -311,78 +308,95 @@ while (( $(echo "$TOTAL_GENERATED_DURATION < $AUDIO_DURATION" | bc -l) )); do
     THIS_DURATION="$CLIP_DURATION"
   fi
 
-  # Check if this would exceed audio duration
   REMAINING_AUDIO=$(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)
   if (( $(echo "$THIS_DURATION > $REMAINING_AUDIO" | bc -l) )); then
     THIS_DURATION="$REMAINING_AUDIO"
-    echo "   Final clip adjusted to ${THIS_DURATION}s to match audio duration"
   fi
-
-  # Ensure minimum duration for final clip
   if (( $(echo "$THIS_DURATION < 0.1" | bc -l) )); then
-    echo "   Skipping clip - remaining duration too small"
     break
   fi
-
-  # Ensure we don't exceed audio duration by more than 0.1 seconds
   if (( $(echo "$TOTAL_GENERATED_DURATION + $THIS_DURATION > $AUDIO_DURATION + 0.1" | bc -l) )); then
     THIS_DURATION=$(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)
-    echo "   Final clip duration adjusted to ${THIS_DURATION}s to exactly match audio"
   fi
 
-  echo "🎞️ Clip $CLIP_COUNT from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
+  echo "   Planning clip $CLIP_COUNT: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
 
-  # Wait for available job slot if using parallel processing
-  if [ "$MAX_JOBS" -gt 1 ]; then
-    wait_for_job_slot
-  fi
-
-  # Process the clip
-  if [ "$MAX_JOBS" -gt 1 ]; then
-    # Parallel processing
-    if ! $VERBOSE; then
-      echo -n "Starting clip $((CLIP_COUNT + 1)) ["
-      for ((p=0; p<20; p++)); do
-        echo -n "█"
-      done
-      echo -n "] "
-    fi
-    
-    process_clip "$CLIP_COUNT" "$MEDIA_FILE" "$THIS_DURATION" "$OUT_CLIP" &
-    active_jobs+=($!)
-    
-    if ! $VERBOSE; then
-      echo "Queued!"
-    fi
-  else
-    # Sequential processing
-    if ! $VERBOSE; then
-      echo -n "Working on clip $((CLIP_COUNT + 1)) ["
-      for ((p=0; p<20; p++)); do
-        echo -n "█"
-      done
-      echo -n "] "
-    fi
-    
-    process_clip "$CLIP_COUNT" "$MEDIA_FILE" "$THIS_DURATION" "$OUT_CLIP"
-    
-    if ! $VERBOSE; then
-      echo "Done!"
-    fi
-  fi
+  CLIP_PLAN_MEDIA+=("$MEDIA_FILE")
+  CLIP_PLAN_DURATION+=("$THIS_DURATION")
+  CLIP_PLAN_OUT+=("$OUT_CLIP")
+  CLIP_PLAN_INDEX+=("$CLIP_COUNT")
 
   TOTAL_GENERATED_DURATION=$(echo "$TOTAL_GENERATED_DURATION + $THIS_DURATION" | bc -l)
   CLIP_COUNT=$((CLIP_COUNT + 1))
+done
+TOTAL_CLIPS=$CLIP_COUNT
+
+echo "✅ Planned $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"
+
+# === GENERATE CLIPS IN PARALLEL ===
+echo "🎬 Generating $TOTAL_CLIPS clips (parallel: $MAX_JOBS)"
+active_jobs=()
+
+for ((i=0; i<$TOTAL_CLIPS; i++)); do
+  MEDIA_FILE="${CLIP_PLAN_MEDIA[$i]}"
+  THIS_DURATION="${CLIP_PLAN_DURATION[$i]}"
+  OUT_CLIP="${CLIP_PLAN_OUT[$i]}"
+  CLIP_INDEX="${CLIP_PLAN_INDEX[$i]}"
+
+  echo "🎞️ Clip $CLIP_INDEX from: $(basename "$MEDIA_FILE") for ${THIS_DURATION}s"
+
+  if [ "$MAX_JOBS" -gt 1 ]; then
+    # Wait for available job slot
+    while [ ${#active_jobs[@]} -ge "$MAX_JOBS" ]; do
+      # Check for completed jobs
+      for j in "${!active_jobs[@]}"; do
+        if ! kill -0 "${active_jobs[$j]}" 2>/dev/null; then
+          wait "${active_jobs[$j]}" 2>/dev/null
+          unset "active_jobs[$j]"
+        fi
+      done
+      # Reindex array properly
+      active_jobs=("${active_jobs[@]}")
+      sleep 0.1
+    done
+    
+    if ! $VERBOSE; then
+      echo -n "Starting clip $((CLIP_INDEX + 1)) ["
+      for ((p=0; p<20; p++)); do echo -n "█"; done
+      echo -n "] "
+    fi
+    
+    process_clip "$CLIP_INDEX" "$MEDIA_FILE" "$THIS_DURATION" "$OUT_CLIP" &
+    pid=$!
+    active_jobs+=($pid)
+    
+    if ! $VERBOSE; then echo "Queued!"; fi
+  else
+    if ! $VERBOSE; then
+      echo -n "Working on clip $((CLIP_INDEX + 1)) ["
+      for ((p=0; p<20; p++)); do echo -n "█"; done
+      echo -n "] "
+    fi
+    process_clip "$CLIP_INDEX" "$MEDIA_FILE" "$THIS_DURATION" "$OUT_CLIP"
+    if ! $VERBOSE; then echo "Done!"; fi
+  fi
 done
 
 # Wait for all background jobs to complete
 if [ "$MAX_JOBS" -gt 1 ]; then
   echo "⏳ Waiting for all clips to complete..."
-  wait_for_all_jobs
+  for job_pid in "${active_jobs[@]}"; do
+    wait "$job_pid" 2>/dev/null
+  done
   echo "✅ All clips completed!"
 fi
 
-TOTAL_CLIPS=$CLIP_COUNT
+# Update TOTAL_GENERATED_DURATION for final verification
+TOTAL_GENERATED_DURATION=0
+for dur in "${CLIP_PLAN_DURATION[@]}"; do
+  TOTAL_GENERATED_DURATION=$(echo "$TOTAL_GENERATED_DURATION + $dur" | bc -l)
+done
+
 echo "📊 Generated $TOTAL_CLIPS clips (total duration: ${TOTAL_GENERATED_DURATION}s)"
 echo "📊 Target audio duration: ${AUDIO_DURATION}s"
 echo "📊 Duration difference: $(echo "$AUDIO_DURATION - $TOTAL_GENERATED_DURATION" | bc -l)s"
