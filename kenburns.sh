@@ -49,7 +49,7 @@ apply_kenburns() {
     fi
     
     # Build Ken Burns filter
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    local kenburns_filter="zoompan=z='1.0+0.1*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
     # Apply Ken Burns effect with compatible pixel format
     if ffmpeg -y -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$DEFAULT_FRAMERATE" "$output_video" >/dev/null 2>&1; then
