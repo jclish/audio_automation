@@ -41,33 +41,23 @@ apply_kenburns() {
     # Determine pan direction based on clip index
     local pan_x
     if (( clip_index % 2 == 0 )); then
-        # Left to right pan - start from left edge immediately
+        # Left to right pan
         pan_x="iw*(1-zoom)*on/(in-1)"
     else
-        # Right to left pan - start from right edge immediately
+        # Right to left pan
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    # Build Ken Burns filter with immediate movement
-    # Use original expressions with first frame skipped for immediate movement
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},select='not(eq(n\\,0))',trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Build Ken Burns filter
+    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
-    echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
-    echo "   Pan direction: $([ $((clip_index % 2)) -eq 0 ] && echo "left→right" || echo "right→left")"
-    
-    # Apply the effect using ffmpeg
-    ffmpeg -y -loop 1 -framerate "$DEFAULT_FRAMERATE" -t "$duration" -i "$input_image" \
-        -vf "$kenburns_filter,format=yuv420p" \
-        -c:v libx264 -pix_fmt yuv420p "$output_video"
-    
-    local exit_code=$?
-    if [[ $exit_code -eq 0 ]]; then
-        echo "✅ Ken Burns effect applied successfully"
+    # Apply Ken Burns effect with compatible pixel format
+    if ffmpeg -y -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$DEFAULT_FRAMERATE" "$output_video" >/dev/null 2>&1; then
+        echo "✅ Ken Burns effect applied: $output_video"
     else
-        echo "❌ Error applying Ken Burns effect (exit code: $exit_code)"
+        echo "❌ Error applying Ken Burns effect to $input_image"
+        return 1
     fi
-    
-    return $exit_code
 }
 
 # Apply Ken Burns effect with custom zoom settings
@@ -108,16 +98,15 @@ apply_kenburns_custom() {
     # Determine pan direction based on clip index
     local pan_x
     if (( clip_index % 2 == 0 )); then
-        # Left to right pan - start from left edge immediately
-        pan_x="iw*(1-$zoom_end)*(on+1)/in"
+        # Left to right pan
+        pan_x="iw*(1-zoom)*on/(in-1)"
     else
-        # Right to left pan - start from right edge immediately
-        pan_x="iw*(1-$zoom_end)*(1 - (on+1)/in)"
+        # Right to left pan
+        pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    # Build Ken Burns filter with immediate movement
-    # Use zoompan with (on+1)/in for immediate movement
-    local kenburns_filter="zoompan=z=$zoom_end:x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Build Ken Burns filter
+    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
     echo "🎬 Applying custom Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
     echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: $([ $((clip_index % 2)) -eq 0 ] && echo "left→right" || echo "right→left")"
@@ -180,33 +169,23 @@ apply_kenburns_with_pan() {
     # Determine pan direction with immediate movement
     local pan_x
     if [[ "$pan_direction" == "left" ]]; then
-        # Left to right pan - start from left edge immediately
+        # Left to right pan
         pan_x="iw*(1-zoom)*on/(in-1)"
     else
-        # Right to left pan - start from right edge immediately  
+        # Right to left pan
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    # Build Ken Burns filter with immediate movement
-    # Use original expressions with first frame skipped for immediate movement
-    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},select='not(eq(n\\,0))',trim=duration=$duration,setpts=PTS-STARTPTS"
+    # Build Ken Burns filter
+    local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
     
-    echo "🎬 Applying Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
-    echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: ${pan_direction}→$([ "$pan_direction" == "left" ] && echo "right" || echo "left")"
-    
-    # Apply the effect using ffmpeg
-    ffmpeg -y -loop 1 -framerate "$DEFAULT_FRAMERATE" -t "$duration" -i "$input_image" \
-        -vf "$kenburns_filter,format=yuv420p" \
-        -c:v libx264 -pix_fmt yuv420p "$output_video"
-    
-    local exit_code=$?
-    if [[ $exit_code -eq 0 ]]; then
-        echo "✅ Ken Burns effect applied successfully"
+    # Apply Ken Burns effect with compatible pixel format
+    if ffmpeg -y -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$DEFAULT_FRAMERATE" "$output_video" >/dev/null 2>&1; then
+        echo "✅ Ken Burns effect applied: $output_video"
     else
-        echo "❌ Error applying Ken Burns effect (exit code: $exit_code)"
+        echo "❌ Error applying Ken Burns effect to $input_image"
+        return 1
     fi
-    
-    return $exit_code
 }
 
 # Get Ken Burns filter string (for advanced usage)
@@ -237,7 +216,7 @@ get_kenburns_filter() {
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
     
-    echo "zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},select='not(eq(n\\,0))',trim=duration=$duration,setpts=PTS-STARTPTS"
+    echo "zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
 }
 
 # Export functions for use in other scripts
