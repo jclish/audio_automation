@@ -50,7 +50,7 @@ fi
 AUDIO_FILE=""
 if [[ -f "example_audio.wav" ]]; then
     AUDIO_FILE="example_audio.wav"
-elif [[ -f "*.wav" ]]; then
+elif compgen -G "*.wav" > /dev/null; then
     AUDIO_FILE=$(ls *.wav | head -n1)
 else
     print_warning "No WAV file found for examples. Please place a WAV file in this directory."
