@@ -57,8 +57,8 @@ apply_kenburns() {
     
     # Debug: Echo the ffmpeg command
     echo "ffmpeg -y -nostdin -loop 1 -i '$input_image' -vf '$kenburns_filter' -c:v libx264 -pix_fmt yuv420p -r '$DEFAULT_FRAMERATE' '$output_video' < /dev/null > ffmpeg.log 2>&1"
-    # Apply Ken Burns effect with compatible pixel format
-    if ffmpeg -y -nostdin -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$DEFAULT_FRAMERATE" "$output_video" < /dev/null > ffmpeg.log 2>&1; then
+    # Use the helper for ffmpeg invocation
+    if run_kenburns_ffmpeg "$input_image" "$output_video" "$kenburns_filter" "$DEFAULT_FRAMERATE" ffmpeg.log; then
         echo "✅ Ken Burns effect applied: $output_video"
     else
         echo "❌ Error applying Ken Burns effect to $input_image (see ffmpeg.log)"
@@ -119,18 +119,15 @@ apply_kenburns_custom() {
     echo "DEBUG: kenburns_filter=$kenburns_filter"
     
     echo "ffmpeg -y -nostdin -loop 1 -framerate '$DEFAULT_FRAMERATE' -t '$duration' -i '$input_image' -vf '$kenburns_filter,format=yuv420p' -c:v libx264 -pix_fmt yuv420p '$output_video' < /dev/null > ffmpeg_custom.log 2>&1"
-    # Apply the effect using ffmpeg
-    ffmpeg -y -nostdin -loop 1 -framerate "$DEFAULT_FRAMERATE" -t "$duration" -i "$input_image" \
-        -vf "$kenburns_filter,format=yuv420p" \
-        -c:v libx264 -pix_fmt yuv420p "$output_video" < /dev/null > ffmpeg_custom.log 2>&1
-    
+    # Use the helper for ffmpeg invocation
+    local filter_with_format="$kenburns_filter,format=yuv420p"
+    run_kenburns_ffmpeg "$input_image" "$output_video" "$filter_with_format" "$DEFAULT_FRAMERATE" ffmpeg_custom.log
     local exit_code=$?
     if [[ $exit_code -eq 0 ]]; then
         echo "✅ Custom Ken Burns effect applied successfully"
     else
         echo "❌ Error applying custom Ken Burns effect (exit code: $exit_code, see ffmpeg_custom.log)"
     fi
-    
     return $exit_code
 }
 
@@ -198,8 +195,8 @@ apply_kenburns_with_pan() {
     echo "DEBUG: kenburns_filter=$kenburns_filter"
     
     echo "ffmpeg -y -nostdin -loop 1 -i '$input_image' -vf '$kenburns_filter' -c:v libx264 -pix_fmt yuv420p -r '$framerate' '$output_video' < /dev/null > ffmpeg_pan.log 2>&1"
-    # Apply Ken Burns effect with compatible pixel format
-    if ffmpeg -y -nostdin -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$framerate" "$output_video" < /dev/null > ffmpeg_pan.log 2>&1; then
+    # Use the helper for ffmpeg invocation
+    if run_kenburns_ffmpeg "$input_image" "$output_video" "$kenburns_filter" "$framerate" ffmpeg_pan.log; then
         echo "✅ Ken Burns effect applied: $output_video"
     else
         echo "❌ Error applying Ken Burns effect to $input_image (see ffmpeg_pan.log)"
@@ -239,6 +236,18 @@ get_kenburns_filter() {
     echo "DEBUG: pan_x=$pan_x"
     
     echo "zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+}
+
+# Helper: Run ffmpeg for Ken Burns effect
+# Arguments: input_image, output_video, filter, framerate, log_file
+run_kenburns_ffmpeg() {
+    local input_image="$1"
+    local output_video="$2"
+    local filter="$3"
+    local framerate="$4"
+    local log_file="$5"
+    ffmpeg -y -nostdin -loop 1 -i "$input_image" -vf "$filter" -c:v libx264 -pix_fmt yuv420p -r "$framerate" "$output_video" < /dev/null > "$log_file" 2>&1
+    return $?
 }
 
 # Export functions for use in other scripts

@@ -81,4 +81,22 @@ teardown() {
 # @test "apply_kenburns_custom errors on nonexistent input file" { ... }
 # @test "apply_kenburns_with_pan errors on missing parameters" { ... }
 # @test "apply_kenburns_with_pan errors on nonexistent input file" { ... }
-# @test "apply_kenburns_with_pan errors on invalid pan direction" { ... } 
+# @test "apply_kenburns_with_pan errors on invalid pan direction" { ... }
+
+@test "run_kenburns_ffmpeg runs ffmpeg and creates output" {
+    source kenburns.sh
+    convert -size 100x100 xc:blue test_input.jpg
+    local filter="zoompan=z='1.0':x=0:y=0:d=10:s=100x100,trim=duration=0.4,setpts=PTS-STARTPTS"
+    run run_kenburns_ffmpeg test_input.jpg test_output.mp4 "$filter" 25 test_ffmpeg.log
+    [ "$status" -eq 0 ]
+    [ -f test_output.mp4 ]
+    [ -f test_ffmpeg.log ]
+}
+
+@test "run_kenburns_ffmpeg returns error on missing input" {
+    source kenburns.sh
+    local filter="zoompan=z='1.0':x=0:y=0:d=10:s=100x100,trim=duration=0.4,setpts=PTS-STARTPTS"
+    run run_kenburns_ffmpeg missing.jpg test_output.mp4 "$filter" 25 test_ffmpeg.log
+    [ "$status" -ne 0 ]
+    [ -f test_ffmpeg.log ]
+} 
