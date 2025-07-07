@@ -35,8 +35,10 @@ apply_kenburns() {
         return 1
     fi
     
+    echo "DEBUG: input_image=$input_image, output_video=$output_video, duration=$duration, clip_index=$clip_index"
     # Calculate frame count
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
+    echo "DEBUG: frame_count=$frame_count"
     
     # Determine pan direction based on clip index
     local pan_x
@@ -47,15 +49,19 @@ apply_kenburns() {
         # Right to left pan
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
+    echo "DEBUG: pan_x=$pan_x"
     
     # Build Ken Burns filter
     local kenburns_filter="zoompan=z='1.0+0.1*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    echo "DEBUG: kenburns_filter=$kenburns_filter"
     
+    # Debug: Echo the ffmpeg command
+    echo "ffmpeg -y -nostdin -loop 1 -i '$input_image' -vf '$kenburns_filter' -c:v libx264 -pix_fmt yuv420p -r '$DEFAULT_FRAMERATE' '$output_video' < /dev/null > ffmpeg.log 2>&1"
     # Apply Ken Burns effect with compatible pixel format
-    if ffmpeg -y -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$DEFAULT_FRAMERATE" "$output_video" >/dev/null 2>&1; then
+    if ffmpeg -y -nostdin -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$DEFAULT_FRAMERATE" "$output_video" < /dev/null > ffmpeg.log 2>&1; then
         echo "✅ Ken Burns effect applied: $output_video"
     else
-        echo "❌ Error applying Ken Burns effect to $input_image"
+        echo "❌ Error applying Ken Burns effect to $input_image (see ffmpeg.log)"
         return 1
     fi
 }
@@ -88,8 +94,10 @@ apply_kenburns_custom() {
         return 1
     fi
     
+    echo "DEBUG: input_image=$input_image, output_video=$output_video, duration=$duration, clip_index=$clip_index, zoom_start=$zoom_start, zoom_end=$zoom_end"
     # Calculate frame count
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
+    echo "DEBUG: frame_count=$frame_count"
     
     # Calculate zoom increment for immediate movement
     local zoom_range=$(echo "$zoom_end - $zoom_start" | bc -l)
@@ -104,23 +112,23 @@ apply_kenburns_custom() {
         # Right to left pan
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
+    echo "DEBUG: pan_x=$pan_x"
     
     # Build Ken Burns filter
     local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
+    echo "DEBUG: kenburns_filter=$kenburns_filter"
     
-    echo "🎬 Applying custom Ken Burns effect: $(basename "$input_image") → $(basename "$output_video") (${duration}s)"
-    echo "   Zoom: ${zoom_start} → ${zoom_end}, Pan: $([ $((clip_index % 2)) -eq 0 ] && echo "left→right" || echo "right→left")"
-    
+    echo "ffmpeg -y -nostdin -loop 1 -framerate '$DEFAULT_FRAMERATE' -t '$duration' -i '$input_image' -vf '$kenburns_filter,format=yuv420p' -c:v libx264 -pix_fmt yuv420p '$output_video' < /dev/null > ffmpeg_custom.log 2>&1"
     # Apply the effect using ffmpeg
-    ffmpeg -y -loop 1 -framerate "$DEFAULT_FRAMERATE" -t "$duration" -i "$input_image" \
+    ffmpeg -y -nostdin -loop 1 -framerate "$DEFAULT_FRAMERATE" -t "$duration" -i "$input_image" \
         -vf "$kenburns_filter,format=yuv420p" \
-        -c:v libx264 -pix_fmt yuv420p "$output_video"
+        -c:v libx264 -pix_fmt yuv420p "$output_video" < /dev/null > ffmpeg_custom.log 2>&1
     
     local exit_code=$?
     if [[ $exit_code -eq 0 ]]; then
         echo "✅ Custom Ken Burns effect applied successfully"
     else
-        echo "❌ Error applying custom Ken Burns effect (exit code: $exit_code)"
+        echo "❌ Error applying custom Ken Burns effect (exit code: $exit_code, see ffmpeg_custom.log)"
     fi
     
     return $exit_code
@@ -165,8 +173,10 @@ apply_kenburns_with_pan() {
         return 1
     fi
     
+    echo "DEBUG: input_image=$input_image, output_video=$output_video, duration=$duration, pan_direction=$pan_direction, zoom_start=$zoom_start, zoom_end=$zoom_end, width=$width, height=$height, framerate=$framerate"
     # Calculate frame count
     local frame_count=$(printf "%.0f" "$(echo "$framerate * $duration" | bc -l)")
+    echo "DEBUG: frame_count=$frame_count"
     
     # Calculate zoom increment for immediate movement
     local zoom_range=$(echo "$zoom_end - $zoom_start" | bc -l)
@@ -181,15 +191,18 @@ apply_kenburns_with_pan() {
         # Right to left pan
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
+    echo "DEBUG: pan_x=$pan_x"
     
     # Build Ken Burns filter
     local kenburns_filter="zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${width}x${height},trim=duration=$duration,setpts=PTS-STARTPTS"
+    echo "DEBUG: kenburns_filter=$kenburns_filter"
     
+    echo "ffmpeg -y -nostdin -loop 1 -i '$input_image' -vf '$kenburns_filter' -c:v libx264 -pix_fmt yuv420p -r '$framerate' '$output_video' < /dev/null > ffmpeg_pan.log 2>&1"
     # Apply Ken Burns effect with compatible pixel format
-    if ffmpeg -y -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$framerate" "$output_video" >/dev/null 2>&1; then
+    if ffmpeg -y -nostdin -loop 1 -i "$input_image" -vf "$kenburns_filter" -c:v libx264 -pix_fmt yuv420p -r "$framerate" "$output_video" < /dev/null > ffmpeg_pan.log 2>&1; then
         echo "✅ Ken Burns effect applied: $output_video"
     else
-        echo "❌ Error applying Ken Burns effect to $input_image"
+        echo "❌ Error applying Ken Burns effect to $input_image (see ffmpeg_pan.log)"
         return 1
     fi
 }
@@ -211,7 +224,9 @@ get_kenburns_filter() {
         return 1
     fi
     
+    echo "DEBUG: duration=$duration, clip_index=$clip_index, zoom_start=$zoom_start, zoom_end=$zoom_end"
     local frame_count=$(printf "%.0f" "$(echo "$DEFAULT_FRAMERATE * $duration" | bc -l)")
+    echo "DEBUG: frame_count=$frame_count"
     local zoom_range=$(echo "$zoom_end - $zoom_start" | bc -l)
     local zoom_increment=$(echo "$zoom_range / $frame_count" | bc -l)
     
@@ -221,6 +236,7 @@ get_kenburns_filter() {
     else
         pan_x="iw*(1-zoom)*(1 - on/(in-1))"
     fi
+    echo "DEBUG: pan_x=$pan_x"
     
     echo "zoompan=z='$zoom_start+$zoom_increment*on/(in-1)':x='$pan_x':y=0:d=$frame_count:s=${DEFAULT_WIDTH}x${DEFAULT_HEIGHT},trim=duration=$duration,setpts=PTS-STARTPTS"
 }
