@@ -15,11 +15,14 @@ This project contains a Bash script that takes a WAV audio file and a directory 
 - Parallel processing for faster video generation (2-8x speed improvement)
 - Compatible with macOS
 - Modular Ken Burns effect system
+- **Security hardened with input validation and path sanitization**
+- **Comprehensive test suite with BATS framework**
 
 ## Requirements
 
 - `ffmpeg` and `ffprobe` installed (`brew install ffmpeg` on macOS)
 - `bc` for floating-point calculations (usually pre-installed)
+- `bats-core` for running tests (optional, for development)
 
 ## Installation
 
@@ -74,6 +77,50 @@ choco install ffmpeg
 # Scoop
 scoop install ffmpeg
 ```
+
+## Testing
+
+The project includes a comprehensive test suite using the BATS framework:
+
+```bash
+# Run all tests
+bats tests/
+
+# Run specific test suites
+bats tests/test_kenburns.bats
+bats tests/test_security.bats
+bats tests/test_makevid.bats
+```
+
+### Test Coverage
+
+- **Ken Burns Effects**: Tests all Ken Burns functions with various parameters
+- **Security**: Validates input sanitization, path validation, and secure file operations
+- **Core Functionality**: Tests main script functionality and error handling
+
+## Security Features
+
+The script includes comprehensive security measures:
+
+### Input Validation
+- Path sanitization to prevent directory traversal attacks
+- Input parameter validation with safe defaults
+- Secure temporary directory handling
+- Command injection prevention
+
+### Security Functions
+- `validate_path()`: Ensures paths are safe and accessible
+- `sanitize_input()`: Removes dangerous characters from user input
+- `secure_cleanup()`: Safely removes temporary files
+- `validate_temp_dir()`: Validates temporary directory security
+
+### Security Testing
+All security measures are tested with the `test_security.bats` suite, covering:
+- Path traversal prevention
+- Command injection resistance
+- Input sanitization effectiveness
+- Secure file operations
+- Temporary directory security
 
 ## Usage
 
@@ -156,6 +203,7 @@ The script uses a modular Ken Burns effect system (`kenburns.sh`) that provides:
 - `apply_kenburns_custom()` — Custom zoom settings
 - `apply_kenburns_with_pan()` — Custom zoom and pan direction
 - `get_kenburns_filter()` — Get filter string for advanced usage
+- `run_kenburns_ffmpeg()` — Centralized ffmpeg execution with logging
 
 ### Ken Burns Parameters
 
@@ -188,6 +236,24 @@ bash makevid.sh audio.wav --kb-zoom-start 0.6 --kb-zoom-end 1.5
 - Each run clears `tmp_work/` to avoid stale data
 - Cross-platform shuffle implementation (works on macOS and Linux)
 - Modular design for easy customization
+- **Test-Driven Development (TDD) approach with comprehensive test coverage**
+- **Security-first design with input validation and sanitization**
+
+## Version History
+
+### v2.0
+- Refactored Ken Burns functions for DRY code
+- Added comprehensive security features
+- Implemented input validation and path sanitization
+- Added comprehensive test suite with BATS framework
+- Fixed ffmpeg hanging issues in test environment
+- Enhanced error handling and logging
+
+### v1.0
+- Initial release with core functionality
+- Ken Burns effects for images
+- Parallel processing support
+- Media shuffling and variable durations
 
 ## License
 
